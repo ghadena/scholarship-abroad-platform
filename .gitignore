@@ -1,0 +1,31 @@
+# Database
+data/
+*.db
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# Streamlit credentials (contains hashed passwords — never commit)
+.streamlit/credentials.yaml
+.streamlit/secrets.toml
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
