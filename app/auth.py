@@ -65,6 +65,7 @@ def login() -> tuple[bool, str | None, str | None]:
         cookie_name=config["cookie"]["name"],
         cookie_key=config["cookie"]["key"],
         cookie_expiry_days=config["cookie"]["expiry_days"],
+        auto_hash=False,
     )
 
     result = authenticator.login(location="main")
