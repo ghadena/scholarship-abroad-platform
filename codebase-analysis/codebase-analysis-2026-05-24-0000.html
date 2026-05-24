@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scholarship Abroad Platform — Codebase Analysis</title>
+<style>
+  :root {
+    --navy: #1E3A8A; --teal: #0D9488; --amber: #F59E0B;
+    --slate: #64748B; --red: #EF4444; --light: #F0F4FF;
+    --green: #10B981; --purple: #8B5CF6; --bg: #0F172A; --surface: #1E293B;
+    --border: #334155; --text: #E2E8F0; --muted: #94A3B8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* Header */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  header h1 { font-size: 16px; font-weight: 700; color: #fff; }
+  .meta { display: flex; gap: 16px; font-size: 11px; color: var(--muted); }
+  .meta span { display: flex; align-items: center; gap: 4px; }
+  .commit { background: var(--navy); color: #93C5FD; padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 11px; }
+  .badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+  .badge-bug { background: #7F1D1D; color: #FCA5A5; }
+  .badge-dead { background: #431407; color: #FED7AA; }
+  .badge-ok { background: #064E3B; color: #6EE7B7; }
+
+  /* Tabs */
+  .tabs { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; padding: 0 20px; flex-shrink: 0; }
+  .tab { padding: 8px 16px; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); transition: all 0.15s; }
+  .tab.active { color: #93C5FD; border-bottom-color: #3B82F6; }
+  .tab:hover { color: var(--text); }
+
+  /* Main layout */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar { width: 260px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; }
+  .sidebar-section { padding: 12px; border-bottom: 1px solid var(--border); }
+  .sidebar-section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+  .stat-card .num { font-size: 20px; font-weight: 700; color: #93C5FD; }
+  .stat-card .lbl { font-size: 9px; color: var(--muted); margin-top: 2px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .issue-item { background: var(--bg); border-left: 3px solid var(--red); padding: 6px 8px; margin-bottom: 6px; border-radius: 0 4px 4px 0; font-size: 10px; line-height: 1.4; }
+  .issue-item .file { color: #93C5FD; font-family: monospace; }
+  .issue-item .desc { color: var(--muted); margin-top: 2px; }
+
+  /* Canvas area */
+  .canvas-wrap { flex: 1; overflow: hidden; position: relative; }
+  #map-tab { width: 100%; height: 100%; }
+  svg#graph { width: 100%; height: 100%; }
+
+  /* Hidden tabs */
+  .tab-panel { display: none; flex: 1; overflow-y: auto; padding: 20px; }
+  .tab-panel.active { display: block; }
+
+  /* Node detail panel */
+  #detail-panel { position: absolute; top: 10px; right: 10px; width: 280px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: none; font-size: 11px; line-height: 1.6; z-index: 100; }
+  #detail-panel h2 { font-size: 13px; color: #fff; margin-bottom: 8px; }
+  #detail-panel .dp-section { margin-bottom: 10px; }
+  #detail-panel .dp-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 3px; }
+  #detail-panel .dp-body { color: var(--text); }
+  #detail-panel .dp-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; margin: 2px; }
+  #detail-panel .close-btn { float: right; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+
+  /* Data flow + issues tabs */
+  .section-head { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .flow-step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+  .flow-num { background: var(--navy); color: #93C5FD; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .flow-content { flex: 1; }
+  .flow-title { font-weight: 600; color: #fff; font-size: 12px; }
+  .flow-desc { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .flow-code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-family: monospace; font-size: 10px; color: #86EFAC; margin-top: 6px; white-space: pre; overflow-x: auto; }
+  .flow-arrow { text-align: center; color: var(--muted); margin: 4px 0; font-size: 18px; }
+
+  .issue-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .issue-card.bug { border-left: 4px solid var(--red); }
+  .issue-card.warn { border-left: 4px solid var(--amber); }
+  .issue-card.debt { border-left: 4px solid var(--purple); }
+  .issue-card h3 { font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  .issue-card .location { font-family: monospace; font-size: 10px; color: #93C5FD; background: var(--bg); display: inline-block; padding: 2px 6px; border-radius: 3px; margin-bottom: 6px; }
+  .issue-card p { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .priority { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; margin-left: 8px; }
+  .p-high { background: #7F1D1D; color: #FCA5A5; }
+  .p-med { background: #78350F; color: #FDE68A; }
+  .p-low { background: #1E3A5F; color: #93C5FD; }
+
+  /* Tooltip */
+  .tooltip { position: absolute; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 10px; color: var(--text); pointer-events: none; display: none; z-index: 200; white-space: nowrap; }
+
+  /* SVG node styles */
+  .node-page { fill: #1D4ED8; stroke: #3B82F6; }
+  .node-core { fill: #1E3A8A; stroke: #60A5FA; }
+  .node-db { fill: #0D9488; stroke: #2DD4BF; }
+  .node-script { fill: #92400E; stroke: #F59E0B; }
+  .node-dead { fill: #7F1D1D; stroke: #EF4444; opacity: 0.7; }
+  .node-test { fill: #312E81; stroke: #818CF8; }
+  .node rect { cursor: pointer; }
+  .node text { fill: #E2E8F0; font-family: 'Segoe UI', system-ui, sans-serif; pointer-events: none; }
+  .node .sub { fill: #94A3B8; }
+  .edge { fill: none; stroke: #334155; stroke-width: 1.5; marker-end: url(#arrow); }
+  .edge-data { stroke: #0D9488; stroke-dasharray: 5,3; }
+  .edge-auth { stroke: #F59E0B; stroke-width: 2; }
+  .edge-critical { stroke: #EF4444; stroke-width: 2; stroke-dasharray: 8,3; }
+  .bug-badge { fill: #EF4444; }
+  .bug-badge text { fill: white; font-size: 9px; font-weight: bold; }
+  .dead-label { fill: #EF4444; font-size: 9px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Scholarship Abroad Platform — Codebase Analysis</h1>
+    <div style="font-size:11px;color:var(--muted);margin-top:3px;">Enterprise architecture map · Generated 2026-05-24</div>
+  </div>
+  <div class="meta">
+    <span>Commit: <span class="commit">a7aa4cd</span></span>
+    <span>Branch: <strong style="color:#86EFAC">main</strong></span>
+    <span>Modules: <strong>15</strong></span>
+    <span><span class="badge badge-bug">5 bugs</span></span>
+    <span><span class="badge badge-dead">1 dead</span></span>
+    <span><span class="badge badge-ok">14 tests</span></span>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('map')">Architecture Map</div>
+  <div class="tab" onclick="switchTab('dataflow')">Data Flow</div>
+  <div class="tab" onclick="switchTab('issues')">Known Issues</div>
+</div>
+
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h3>Stats</h3>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">15</div><div class="lbl">Modules</div></div>
+        <div class="stat-card"><div class="num">4</div><div class="lbl">DB Tables</div></div>
+        <div class="stat-card"><div class="num" style="color:#FCA5A5">5</div><div class="lbl">Open Bugs</div></div>
+        <div class="stat-card"><div class="num" style="color:#FDE68A">1</div><div class="lbl">Dead Code</div></div>
+        <div class="stat-card"><div class="num">1,822</div><div class="lbl">Students</div></div>
+        <div class="stat-card"><div class="num">7,748</div><div class="lbl">Family</div></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Legend</h3>
+      <div class="legend-item"><div class="dot" style="background:#1D4ED8;border:2px solid #3B82F6"></div>Streamlit Pages</div>
+      <div class="legend-item"><div class="dot" style="background:#1E3A8A;border:2px solid #60A5FA"></div>Core Modules</div>
+      <div class="legend-item"><div class="dot" style="background:#0D9488;border:2px solid #2DD4BF"></div>Database / Tables</div>
+      <div class="legend-item"><div class="dot" style="background:#92400E;border:2px solid #F59E0B"></div>Scripts / CLI</div>
+      <div class="legend-item"><div class="dot" style="background:#7F1D1D;border:2px solid #EF4444"></div>Dead Code</div>
+      <div class="legend-item"><div class="dot" style="background:#312E81;border:2px solid #818CF8"></div>Tests</div>
+      <div style="margin-top:8px;font-size:10px;color:var(--muted)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/></svg>Import</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#0D9488" stroke-width="1.5" stroke-dasharray="4,2"/></svg>Data flow</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#F59E0B" stroke-width="2"/></svg>Auth chain</div>
+        <div style="display:flex;align-items:center;gap:6px"><svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#EF4444" stroke-width="2" stroke-dasharray="6,2"/></svg>Critical path</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Open Issues</h3>
+      <div class="issue-item">
+        <div class="file">3_Dashboard.py:22</div>
+        <div class="desc">Uses fetch_students_df() — shows placeholder values. Change to fetch_full_students_df()</div>
+      </div>
+      <div class="issue-item">
+        <div class="file">importer.py</div>
+        <div class="desc">SQLite-only dead code. No page calls it. Breaks on Postgres.</div>
+      </div>
+      <div class="issue-item">
+        <div class="file">report.py:build_quarterly_report</div>
+        <div class="desc">Legacy alias passes empty enrich_df → study sections blank</div>
+      </div>
+      <div class="issue-item">
+        <div class="file">students.updated_at</div>
+        <div class="desc">Column never auto-updated. No trigger or explicit SET.</div>
+      </div>
+      <div class="issue-item">
+        <div class="file">data_quality_report.xlsx</div>
+        <div class="desc">PII committed to git repo. Remove if repo goes public.</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Data Population</h3>
+      <div style="font-size:10px;color:var(--muted);line-height:1.8">
+        Students: <strong style="color:var(--text)">1,822</strong><br>
+        Accompaniments: <strong style="color:var(--text)">7,748</strong><br>
+        Enrichment records: <strong style="color:var(--text)">1,860</strong><br>
+        No enrichment match: <strong style="color:#FCA5A5">14</strong><br>
+        Birthday flagged: <strong style="color:#FDE68A">unknown</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- Map tab -->
+  <div id="map-tab" style="flex:1;position:relative;overflow:hidden;">
+    <svg id="graph" viewBox="0 0 1100 700" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#4B5563"/>
+        </marker>
+        <marker id="arrow-teal" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#0D9488"/>
+        </marker>
+        <marker id="arrow-amber" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#F59E0B"/>
+        </marker>
+        <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#EF4444"/>
+        </marker>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+
+      <!-- Background grid -->
+      <rect width="1100" height="700" fill="#0F172A"/>
+      <text x="560" y="30" fill="#1E293B" font-size="11" text-anchor="middle" font-family="monospace">SCHOLARSHIP ABROAD PLATFORM · commit a7aa4cd · 2026-05-24</text>
+
+      <!-- Zone labels -->
+      <text x="30" y="70" fill="#1E3A5F" font-size="10" font-weight="600" text-transform="uppercase">STREAMLIT PAGES</text>
+      <text x="420" y="70" fill="#0A2A2A" font-size="10" font-weight="600">CORE MODULES</text>
+      <text x="750" y="70" fill="#0D2A28" font-size="10" font-weight="600">DATABASE LAYER</text>
+      <text x="30" y="570" fill="#1A1A0A" font-size="10" font-weight="600">SCRIPTS / CLI</text>
+      <text x="420" y="570" fill="#1A1020" font-size="10" font-weight="600">TESTS</text>
+
+      <!-- Zone backgrounds -->
+      <rect x="20" y="75" width="360" height="460" rx="8" fill="none" stroke="#1E3A8A" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.4"/>
+      <rect x="400" y="75" width="320" height="460" rx="8" fill="none" stroke="#0D9488" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.3"/>
+      <rect x="740" y="75" width="340" height="460" rx="8" fill="none" stroke="#0D9488" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.25"/>
+      <rect x="20" y="575" width="360" height="80" rx="8" fill="none" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.3"/>
+      <rect x="400" y="575" width="320" height="80" rx="8" fill="none" stroke="#818CF8" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.3"/>
+
+      <!-- ═══════════════════ EDGES ═══════════════════ -->
+
+      <!-- Pages → auth.py (auth chain) -->
+      <line x1="200" y1="105" x2="480" y2="145" class="edge edge-auth" marker-end="url(#arrow-amber)"/>
+      <line x1="200" y1="170" x2="480" y2="155" class="edge edge-auth" marker-end="url(#arrow-amber)"/>
+      <line x1="200" y1="235" x2="480" y2="163" class="edge edge-auth" marker-end="url(#arrow-amber)"/>
+      <line x1="200" y1="300" x2="480" y2="170" class="edge edge-auth" marker-end="url(#arrow-amber)"/>
+      <line x1="200" y1="365" x2="480" y2="178" class="edge edge-auth" marker-end="url(#arrow-amber)"/>
+      <line x1="200" y1="430" x2="480" y2="185" class="edge edge-auth" marker-end="url(#arrow-amber)"/>
+
+      <!-- Pages → database.py (import) -->
+      <line x1="210" y1="108" x2="490" y2="250" class="edge" marker-end="url(#arrow)" opacity="0.5"/>
+      <line x1="210" y1="173" x2="490" y2="252" class="edge" marker-end="url(#arrow)" opacity="0.5"/>
+      <line x1="210" y1="238" x2="490" y2="255" class="edge" marker-end="url(#arrow)" opacity="0.5"/>
+      <line x1="210" y1="303" x2="490" y2="258" class="edge" marker-end="url(#arrow)" opacity="0.5"/>
+      <line x1="210" y1="368" x2="490" y2="262" class="edge" marker-end="url(#arrow)" opacity="0.5"/>
+      <line x1="210" y1="433" x2="490" y2="265" class="edge" marker-end="url(#arrow)" opacity="0.5"/>
+
+      <!-- auth.py → database.py (CRITICAL: injects DATABASE_URL) -->
+      <line x1="560" y1="170" x2="500" y2="238" class="edge edge-critical" marker-end="url(#arrow-red)"/>
+      <text x="545" y="205" fill="#EF4444" font-size="8" transform="rotate(-50 545 205)">injects DATABASE_URL</text>
+
+      <!-- database.py → validation.py -->
+      <line x1="560" y1="265" x2="470" y2="320" class="edge" marker-end="url(#arrow)" opacity="0.6"/>
+
+      <!-- database.py → duplicates.py -->
+      <line x1="560" y1="270" x2="470" y2="390" class="edge" marker-end="url(#arrow)" opacity="0.6"/>
+
+      <!-- 5_Export → report.py -->
+      <line x1="210" y1="365" x2="465" y2="455" class="edge" marker-end="url(#arrow)" opacity="0.7"/>
+
+      <!-- 1_DataEntry → validation.py -->
+      <line x1="210" y1="108" x2="465" y2="322" class="edge" marker-end="url(#arrow)" opacity="0.5"/>
+
+      <!-- 6_Admin → duplicates.py -->
+      <line x1="210" y1="433" x2="465" y2="393" class="edge" marker-end="url(#arrow)" opacity="0.5"/>
+
+      <!-- database.py → DB tables (data flow) -->
+      <line x1="620" y1="255" x2="760" y2="130" class="edge edge-data" marker-end="url(#arrow-teal)"/>
+      <line x1="620" y1="258" x2="760" y2="215" class="edge edge-data" marker-end="url(#arrow-teal)"/>
+      <line x1="620" y1="262" x2="760" y2="300" class="edge edge-data" marker-end="url(#arrow-teal)"/>
+      <line x1="620" y1="265" x2="760" y2="385" class="edge edge-data" marker-end="url(#arrow-teal)"/>
+
+      <!-- bulk_import → database tables (data flow) -->
+      <line x1="200" y1="610" x2="760" y2="135" class="edge edge-data" marker-end="url(#arrow-teal)" opacity="0.5"/>
+      <line x1="200" y1="612" x2="760" y2="220" class="edge edge-data" marker-end="url(#arrow-teal)" opacity="0.5"/>
+      <line x1="200" y1="614" x2="760" y2="305" class="edge edge-data" marker-end="url(#arrow-teal)" opacity="0.5"/>
+
+      <!-- importer.py → database (dead/broken) -->
+      <line x1="200" y1="500" x2="490" y2="260" stroke="#EF4444" stroke-width="1" stroke-dasharray="4,3" opacity="0.5" marker-end="url(#arrow-red)"/>
+
+      <!-- ═══════════════════ NODES — PAGES ═══════════════════ -->
+
+      <!-- main.py -->
+      <g class="node" onclick="showDetail('main')" transform="translate(50,85)">
+        <rect width="160" height="36" rx="6" class="node-core" filter="url(#glow)"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">app/main.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">Entry point · init_db() · home KPIs</text>
+      </g>
+
+      <!-- 1_Data_Entry -->
+      <g class="node" onclick="showDetail('data_entry')" transform="translate(50,150)">
+        <rect width="160" height="36" rx="6" class="node-page"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">1_Data_Entry.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">Add student + accompaniments</text>
+      </g>
+
+      <!-- 2_Records -->
+      <g class="node" onclick="showDetail('records')" transform="translate(50,215)">
+        <rect width="160" height="36" rx="6" class="node-page"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">2_Records.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">Browse · filter · deletion req</text>
+      </g>
+
+      <!-- 3_Dashboard ⚠️ bug -->
+      <g class="node" onclick="showDetail('dashboard')" transform="translate(50,280)">
+        <rect width="160" height="36" rx="6" class="node-page"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">3_Dashboard.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">KPIs · Plotly charts</text>
+        <!-- Bug badge -->
+        <g transform="translate(135,-8)">
+          <rect width="28" height="14" rx="7" class="bug-badge"/>
+          <text x="14" y="10" text-anchor="middle" font-size="8" fill="white" font-weight="bold">BUG</text>
+        </g>
+      </g>
+
+      <!-- 4_Import -->
+      <g class="node" onclick="showDetail('import_page')" transform="translate(50,345)">
+        <rect width="160" height="36" rx="6" class="node-page"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">4_Import.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">Info page only (UI removed)</text>
+      </g>
+
+      <!-- 5_Export -->
+      <g class="node" onclick="showDetail('export')" transform="translate(50,410)">
+        <rect width="160" height="36" rx="6" class="node-page"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">5_Export_Report.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">Filtered export · PDF report</text>
+      </g>
+
+      <!-- 6_Admin -->
+      <g class="node" onclick="showDetail('admin')" transform="translate(50,475)">
+        <rect width="160" height="36" rx="6" class="node-page"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">6_Admin.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">Admin only · deletions · dupes</text>
+      </g>
+
+      <!-- ═══════════════════ NODES — CORE MODULES ═══════════════════ -->
+
+      <!-- auth.py (critical) -->
+      <g class="node" onclick="showDetail('auth')" transform="translate(415,135)">
+        <rect width="160" height="50" rx="6" class="node-core" stroke="#F59E0B" stroke-width="2" filter="url(#glow)"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">auth.py</text>
+        <text x="80" y="29" font-size="9" text-anchor="middle" class="sub">Login · roles · cookie session</text>
+        <text x="80" y="42" font-size="8" text-anchor="middle" fill="#FDE68A">⚠ MUST import first on every page</text>
+      </g>
+
+      <!-- database.py (central) -->
+      <g class="node" onclick="showDetail('database')" transform="translate(415,235)">
+        <rect width="160" height="50" rx="6" class="node-db" filter="url(#glow)"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">database.py</text>
+        <text x="80" y="29" font-size="9" text-anchor="middle" class="sub">Dual Postgres/SQLite · all CRUD</text>
+        <text x="80" y="42" font-size="8" text-anchor="middle" fill="#99F6E4">_USE_POSTGRES set at import time</text>
+      </g>
+
+      <!-- validation.py -->
+      <g class="node" onclick="showDetail('validation')" transform="translate(415,305)">
+        <rect width="160" height="36" rx="6" class="node-core"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">validation.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">NID rules · form validation</text>
+      </g>
+
+      <!-- duplicates.py -->
+      <g class="node" onclick="showDetail('duplicates')" transform="translate(415,370)">
+        <rect width="160" height="36" rx="6" class="node-core"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">duplicates.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">Exact + soft dupe detection</text>
+      </g>
+
+      <!-- report.py ⚠️ legacy alias -->
+      <g class="node" onclick="showDetail('report')" transform="translate(415,435)">
+        <rect width="160" height="36" rx="6" class="node-core"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle">report.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">Executive PDF · matplotlib + RL</text>
+        <g transform="translate(135,-8)">
+          <rect width="28" height="14" rx="7" class="bug-badge" fill="#F59E0B"/>
+          <text x="14" y="10" text-anchor="middle" font-size="8" fill="#1A1A0A" font-weight="bold">WARN</text>
+        </g>
+      </g>
+
+      <!-- importer.py (dead) -->
+      <g class="node" onclick="showDetail('importer')" transform="translate(415,500)">
+        <rect width="160" height="36" rx="6" class="node-dead"/>
+        <text x="80" y="17" font-size="11" font-weight="600" text-anchor="middle" fill="#FCA5A5">importer.py</text>
+        <text x="80" y="30" font-size="9" text-anchor="middle" class="sub">⚰ DEAD — SQLite-only orphan</text>
+      </g>
+
+      <!-- ═══════════════════ NODES — DATABASE TABLES ═══════════════════ -->
+
+      <g class="node" onclick="showDetail('tbl_students')" transform="translate(760,100)">
+        <rect width="180" height="40" rx="6" class="node-db" fill="#0A4040"/>
+        <text x="90" y="16" font-size="11" font-weight="600" text-anchor="middle">TABLE: students</text>
+        <text x="90" y="30" font-size="9" text-anchor="middle" class="sub">1,822 rows · PK: id · UQ: national_id, student_id</text>
+      </g>
+
+      <g class="node" onclick="showDetail('tbl_accompaniments')" transform="translate(760,185)">
+        <rect width="180" height="40" rx="6" class="node-db" fill="#0A4040"/>
+        <text x="90" y="16" font-size="11" font-weight="600" text-anchor="middle">TABLE: accompaniments</text>
+        <text x="90" y="30" font-size="9" text-anchor="middle" class="sub">7,748 rows · FK: student_id_fk → students.id</text>
+      </g>
+
+      <g class="node" onclick="showDetail('tbl_enrichment')" transform="translate(760,270)">
+        <rect width="180" height="50" rx="6" class="node-db" fill="#0A4040"/>
+        <text x="90" y="16" font-size="11" font-weight="600" text-anchor="middle">TABLE: student_enrichment</text>
+        <text x="90" y="30" font-size="9" text-anchor="middle" class="sub">1,860 rows · UQ: national_id</text>
+        <text x="90" y="43" font-size="8" text-anchor="middle" fill="#99F6E4">COALESCE join → canonical view</text>
+      </g>
+
+      <g class="node" onclick="showDetail('tbl_deletion')" transform="translate(760,360)">
+        <rect width="180" height="40" rx="6" class="node-db" fill="#0A4040"/>
+        <text x="90" y="16" font-size="11" font-weight="600" text-anchor="middle">TABLE: deletion_requests</text>
+        <text x="90" y="30" font-size="9" text-anchor="middle" class="sub">Audit trail · pending/approved/rejected</text>
+      </g>
+
+      <!-- Neon external -->
+      <g transform="translate(760,440)">
+        <rect width="180" height="55" rx="6" fill="#042F2E" stroke="#2DD4BF" stroke-width="1.5"/>
+        <text x="90" y="16" font-size="11" font-weight="600" text-anchor="middle" fill="#2DD4BF">☁ Neon Postgres</text>
+        <text x="90" y="29" font-size="9" text-anchor="middle" fill="#99F6E4">eu-central-1 · serverless</text>
+        <text x="90" y="41" font-size="8" text-anchor="middle" fill="#5EEAD4">ep-cold-moon-al765gn5</text>
+        <text x="90" y="53" font-size="7" text-anchor="middle" fill="#0F766E">SSL required · scales to zero</text>
+      </g>
+
+      <!-- DB tables → Neon -->
+      <line x1="850" y1="140" x2="850" y2="440" stroke="#0D9488" stroke-width="1" stroke-dasharray="3,3" opacity="0.4" marker-end="url(#arrow-teal)"/>
+
+      <!-- ═══════════════════ NODES — SCRIPTS ═══════════════════ -->
+
+      <g class="node" onclick="showDetail('bulk_import')" transform="translate(50,590)">
+        <rect width="200" height="40" rx="6" class="node-script"/>
+        <text x="100" y="17" font-size="11" font-weight="600" text-anchor="middle">scripts/bulk_import.py</text>
+        <text x="100" y="30" font-size="9" text-anchor="middle" class="sub">CLI · 3-sheet Excel → Neon · savepoints</text>
+      </g>
+
+      <!-- ═══════════════════ NODES — TESTS ═══════════════════ -->
+
+      <g class="node" onclick="showDetail('tests')" transform="translate(415,590)">
+        <rect width="200" height="40" rx="6" class="node-test"/>
+        <text x="100" y="17" font-size="11" font-weight="600" text-anchor="middle">tests/ (3 files)</text>
+        <text x="100" y="30" font-size="9" text-anchor="middle" class="sub">14 validation tests · 2 stale</text>
+      </g>
+
+      <!-- Streamlit Cloud external -->
+      <g transform="translate(760,530)">
+        <rect width="180" height="55" rx="6" fill="#0F172A" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="90" y="16" font-size="11" font-weight="600" text-anchor="middle" fill="#93C5FD">☁ Streamlit Community Cloud</text>
+        <text x="90" y="29" font-size="9" text-anchor="middle" fill="#BFDBFE">Auto-deploy on push to main</text>
+        <text x="90" y="41" font-size="8" text-anchor="middle" fill="#6B7280">entry: app/main.py</text>
+        <text x="90" y="53" font-size="7" text-anchor="middle" fill="#4B5563">Ephemeral filesystem ⚠</text>
+      </g>
+
+    </svg>
+
+    <!-- Detail panel -->
+    <div id="detail-panel">
+      <span class="close-btn" onclick="closeDetail()">×</span>
+      <h2 id="dp-title"></h2>
+      <div id="dp-content"></div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+
+  <!-- Data Flow tab -->
+  <div class="tab-panel" id="dataflow-panel" style="max-width:800px">
+    <div class="section-head">Data Flow — From Source Excel to PDF Report</div>
+
+    <div class="flow-step">
+      <div class="flow-num">1</div>
+      <div class="flow-content">
+        <div class="flow-title">Source: new_excel.xlsx (3 sheets)</div>
+        <div class="flow-desc">External file from source organisation. Not in the repo. Contains student data, family data, and enriched scholarship metadata.</div>
+        <div class="flow-code">Sheet: "student data"       → ~1,822 rows
+Sheet: "family data"        → ~7,748 rows
+Sheet: "more student data"  → ~1,860 rows</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+
+    <div class="flow-step">
+      <div class="flow-num">2</div>
+      <div class="flow-content">
+        <div class="flow-title">CLI Bulk Import: scripts/bulk_import.py</div>
+        <div class="flow-desc">Run once (or when new data arrives). Cleans NIDs, maps relationships, handles per-row savepoints. Students/enrichment are idempotent. Family is NOT idempotent — re-running inserts duplicates.</div>
+        <div class="flow-code">DATABASE_URL="..." python3 scripts/bulk_import.py /path/to/file.xlsx
+
+import_students()   → students table (ON CONFLICT DO NOTHING)
+import_family()     → accompaniments table (NO conflict guard)
+import_enrichment() → student_enrichment (ON CONFLICT DO UPDATE)</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+
+    <div class="flow-step">
+      <div class="flow-num">3</div>
+      <div class="flow-content">
+        <div class="flow-title">Ongoing Entry: app/pages/1_Data_Entry.py</div>
+        <div class="flow-desc">For new scholarship decisions issued after the bulk import. Full validation via validation.py. Triggers duplicate rescan on every save.</div>
+        <div class="flow-code">validate_student_form(data)   → errors list (empty = OK)
+db.insert_student(form, accs) → writes to students + accompaniments
+duplicates.flag_soft_duplicates(conn)  → rescans ALL records O(n²)</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+
+    <div class="flow-step">
+      <div class="flow-num">4</div>
+      <div class="flow-content">
+        <div class="flow-title">The Enrichment Merge (Virtual View)</div>
+        <div class="flow-desc">fetch_full_students_df() applies COALESCE to give enrichment data priority over placeholder values inserted during bulk import.</div>
+        <div class="flow-code">SELECT
+  COALESCE(e.study_country,  s.country_abroad) AS country_abroad,
+  COALESCE(e.certificate,    s.study_level)    AS study_level,
+  COALESCE(e.specialization, s.study_field)    AS study_field,
+  COALESCE(e.start_date,     s.start_date)     AS start_date,
+  COALESCE(e.end_date,       s.end_date)       AS end_date,
+  e.duration_months, e.months_already_spent, e.remaining_study_months
+FROM students s
+LEFT JOIN student_enrichment e ON e.national_id = s.national_id
+-- 14 students have no enrichment match → LEFT JOIN produces NULLs
+-- COALESCE falls back to placeholder values for those 14</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+
+    <div class="flow-step">
+      <div class="flow-num">5</div>
+      <div class="flow-content">
+        <div class="flow-title">Export & Report Page (5_Export_Report.py)</div>
+        <div class="flow-desc">User applies country/gender filters. Filtered DataFrames are passed to build_executive_report(). All three tables (students, accompaniments, enrichment) are filtered consistently.</div>
+        <div class="flow-code">students_df = fetch_full_students_df()     # enriched canonical view
+family_df   = fetch_accompaniments_df()
+enrich_df   = fetch_enrichment_df()
+
+# Apply filters (country, gender multiselects)
+filtered_df      = students_df[students_df["country_abroad"].isin(selected)]
+filtered_acc_df  = family_df[family_df["student_id_fk"].isin(filtered_ids)]
+filtered_enr_df  = enrich_df[enrich_df["national_id"].isin(filtered_nids)]</div>
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+
+    <div class="flow-step">
+      <div class="flow-num">6</div>
+      <div class="flow-content">
+        <div class="flow-title">PDF Generation: app/report.py</div>
+        <div class="flow-desc">build_executive_report() builds 6 report sections. matplotlib charts are rendered to PNG bytes and embedded in a ReportLab PDF. Returns bytes that Streamlit serves as a download.</div>
+        <div class="flow-code">build_executive_report(filtered_df, filtered_acc_df, filtered_enr_df)
+  → _chart_geo()             → Section 2: Geographic distribution
+  → _chart_person_type()    → Section 3: Population composition
+  → _chart_age()            → Section 4: Age profile
+  → _chart_family_size()    → Section 4: Family size
+  → _chart_remaining_months() → Section 5: Study duration
+  → _chart_study_level()    → Section 6: Study level
+  → _chart_top_fields()     → Section 6: Field analysis
+  → ReportLab SimpleDocTemplate.build(story)
+  → returns bytes</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Issues tab -->
+  <div class="tab-panel" id="issues-panel" style="max-width:800px">
+    <div class="section-head">Open Issues, Bugs & Technical Debt</div>
+
+    <div class="issue-card bug">
+      <h3>Dashboard shows placeholder study levels/countries <span class="priority p-high">HIGH</span></h3>
+      <div class="location">app/pages/3_Dashboard.py:22</div>
+      <p>The Dashboard calls <code>db.fetch_students_df()</code> which returns raw student table values. For ~1,800 students imported via bulk import, this shows study_level="Bachelors", country="Unknown" etc. Fix: change line 22 to <code>db.fetch_full_students_df()</code>. One-line change, no other impact.</p>
+    </div>
+
+    <div class="issue-card bug">
+      <h3>importer.py is dead code that breaks on Postgres <span class="priority p-med">MEDIUM</span></h3>
+      <div class="location">app/importer.py (entire file)</div>
+      <p>The Import page UI was removed. No page imports or calls importer.py anymore. The file uses SQLite-specific <code>conn.execute()</code> directly and <code>INSERT OR IGNORE</code> syntax — it will fail silently or error on Postgres. The file and its tests (test_importer.py) should be deleted. The real bulk import tool is scripts/bulk_import.py.</p>
+    </div>
+
+    <div class="issue-card bug">
+      <h3>build_quarterly_report alias passes empty enrich_df <span class="priority p-med">MEDIUM</span></h3>
+      <div class="location">app/report.py:build_quarterly_report()</div>
+      <p>The backward-compat alias <code>build_quarterly_report(students_df, accomp_df, year, quarter)</code> calls <code>build_executive_report(students_df, accomp_df, pd.DataFrame())</code> — note the empty DataFrame for enrich_df. This means study duration and study level sections produce no charts/tables. Any caller using the old API gets a visually degraded report. Safe to remove once confirmed no callers remain.</p>
+    </div>
+
+    <div class="issue-card bug">
+      <h3>updated_at column never updated <span class="priority p-low">LOW</span></h3>
+      <div class="location">app/database.py (students table schema)</div>
+      <p>The <code>updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP</code> column is set at insert time but never updated when records change. There is no edit UI yet, and no UPDATE query sets this field. Until an edit feature is added, this column is misleading — it shows the creation timestamp, not the last modification time.</p>
+    </div>
+
+    <div class="issue-card warn">
+      <h3>PII committed to git repository <span class="priority p-high">HIGH (if repo goes public)</span></h3>
+      <div class="location">data_quality_report.xlsx (repo root)</div>
+      <p>The data quality report contains real student national IDs, full names, and birthdays. It was committed to demonstrate data quality issues to the source organisation. If this repo is ever made public or shared with external parties, this file must be removed from git history. For now (private repo), it is low risk but should be tracked. Add to .gitignore to prevent future versions being committed.</p>
+    </div>
+
+    <div class="issue-card debt">
+      <h3>No student edit/update UI <span class="priority p-med">MEDIUM</span></h3>
+      <div class="location">Missing feature</div>
+      <p>There is no way to correct a student record via the web UI. Corrections require either: (a) delete + re-enter, or (b) direct SQL via Neon console. The students table has no UPDATE path in the app. This is the most common operational complaint from data-entry staff.</p>
+    </div>
+
+    <div class="issue-card debt">
+      <h3>duplicate detection is O(n²) — will slow at scale <span class="priority p-low">LOW NOW</span></h3>
+      <div class="location">app/duplicates.py:flag_soft_duplicates()</div>
+      <p>The soft duplicate scan is a self-join: <code>FROM students a JOIN students b ON b.id > a.id</code>. This runs after every insert. At 1,822 rows it takes ~50ms. At 100,000 rows it would take ~50 seconds and would time out in Streamlit. When the table grows past ~10,000 rows, optimise: add an index on <code>lower(full_name)</code>, and switch to incremental scanning (only check new records against existing).</p>
+    </div>
+
+    <div class="issue-card debt">
+      <h3>remaining_study_months is stale (static value from import date) <span class="priority p-med">MEDIUM</span></h3>
+      <div class="location">student_enrichment.remaining_study_months</div>
+      <p>This field was calculated by the source organisation before the Excel was prepared and imported. It is NOT recalculated dynamically. A student who had "12 months remaining" at import time now has fewer. The fix: in report.py, recalculate dynamically from <code>end_date - today</code> rather than reading the stored value. The stored value should be treated as historical context only.</p>
+    </div>
+
+    <div class="issue-card debt">
+      <h3>DEPLOYMENT.md is outdated <span class="priority p-low">LOW</span></h3>
+      <div class="location">DEPLOYMENT.md</div>
+      <p>Documents SQLite on Render.com and Streamlit Cloud. The project has migrated to Neon Postgres. Following DEPLOYMENT.md instructions will create a broken deployment. Use skills/devops.md instead.</p>
+    </div>
+
+    <div class="issue-card debt">
+      <h3>Arabic name variants not caught by duplicate detection <span class="priority p-med">MEDIUM</span></h3>
+      <div class="location">app/duplicates.py:soft_sql</div>
+      <p>Soft duplicate detection uses exact <code>lower(trim(full_name))</code> matching. "Mohamed" and "Muhammad" are the same person but different strings — not flagged. Arabic names with different Unicode normalisation (alef variants, teh marbuta) also don't match. See skills/arabic-translation.md for the normalise_arabic() implementation to add.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const nodeData = {
+    main: {
+      title: "app/main.py — Entry Point",
+      purpose: "Streamlit landing page. The first file Streamlit runs. Calls init_db() to ensure all tables exist on every startup.",
+      functions: ["init_db() — creates tables if missing", "login() / logout() — auth entry point", "fetch_students_df(), fetch_accompaniments_df() — home KPIs"],
+      issues: ["Uses raw fetch_students_df() for KPIs — acceptable here since we only need counts"],
+      dataSources: ["students table (count)", "accompaniments table (count)"],
+      tags: ["entry-point", "init", "auth"]
+    },
+    auth: {
+      title: "app/auth.py — Authentication (CRITICAL ORDERING)",
+      purpose: "Wraps streamlit-authenticator 0.4.x. MUST be imported first on every page because it injects DATABASE_URL into os.environ before database.py loads.",
+      functions: ["login() → (authenticated, name, username)", "logout() → clears session", "require_role(*roles) → stops page if role not allowed", "current_username() / current_role()"],
+      issues: ["CRITICAL: Import before database.py or Postgres silently falls back to SQLite", "auto_hash=False REQUIRED — 0.4.x default re-hashes stored hashes", "Dev mode triggers if credentials_yaml secret is missing"],
+      dataSources: ["st.secrets['credentials_yaml']", "st.session_state"],
+      tags: ["auth", "critical", "security"]
+    },
+    database: {
+      title: "app/database.py — Database Layer",
+      purpose: "All database I/O. Abstracts Postgres (Neon) vs SQLite behind identical API. _USE_POSTGRES is set at import time and is immutable.",
+      functions: ["init_db() — creates schema", "get_conn() — context manager", "_execute(conn, sql, params) — swaps ? to %s for Postgres", "insert_student() — write + duplicate rescan", "fetch_full_students_df() — canonical COALESCE view", "fetch_students_df() — raw students only"],
+      issues: ["fetch_students_df() returns placeholder values — avoid for analytics", "updated_at never auto-updated"],
+      dataSources: ["students", "accompaniments", "student_enrichment", "deletion_requests"],
+      tags: ["database", "critical", "dual-mode"]
+    },
+    validation: {
+      title: "app/validation.py — NID & Form Validation",
+      purpose: "Enforces Libyan National ID rules and validates student form data before DB write.",
+      functions: ["is_valid_nid_format(nid)", "derive_gender(nid) → Male/Female/None", "derive_birth_year(nid) → int", "verify_birthday(nid, date) → bool", "validate_student_form(data) → list[str]", "validate_accompaniment(data) → list[str]"],
+      issues: ["NID/birthday mismatch is non-blocking — record saved with birthday_flag=1"],
+      dataSources: ["NID string structure (digit 1=gender, digits 2-5=year)"],
+      tags: ["validation", "libyan-nid", "well-tested"]
+    },
+    duplicates: {
+      title: "app/duplicates.py — Duplicate Detection",
+      purpose: "Finds exact and soft duplicates across the students table. Runs after every insert.",
+      functions: ["find_duplicates(conn) → {exact: [], soft: []}", "flag_soft_duplicates(conn) → None", "auto_remove_exact_duplicates(conn) → int"],
+      issues: ["O(n²) self-join — will slow at 50k+ rows", "Arabic name variants NOT detected (different transliterations)", "lower(trim(full_name)) only — no fuzzy matching"],
+      dataSources: ["students table (self-join)"],
+      tags: ["duplicates", "performance-risk", "arabic-gap"]
+    },
+    report: {
+      title: "app/report.py — Executive PDF Report",
+      purpose: "Builds 6-section PDF report matching Insurance Coverage Executive Report format. Takes 3 DataFrames, renders matplotlib charts, assembles with ReportLab.",
+      functions: ["build_executive_report(students_df, family_df, enrich_df) → bytes", "build_quarterly_report(...) → legacy alias (WARN: empty enrich_df)", "_chart_geo(), _chart_age(), _chart_remaining_months(), _chart_study_level(), _chart_top_fields()"],
+      issues: ["build_quarterly_report passes empty enrich_df → study sections blank", "remaining_study_months is static from import date — stale over time", "Arabic names in PDF tables render as disconnected LTR glyphs"],
+      dataSources: ["fetch_full_students_df()", "fetch_accompaniments_df()", "fetch_enrichment_df()"],
+      tags: ["report", "pdf", "matplotlib", "reportlab"]
+    },
+    importer: {
+      title: "app/importer.py — DEAD CODE ⚰",
+      purpose: "Originally handled single-sheet student-only bulk import from the UI. The Import page UI was removed. Nothing calls this file.",
+      functions: ["load_excel(), map_columns(), validate_import(), import_rows()"],
+      issues: ["DEAD — no page imports or calls it", "SQLite-only: uses conn.execute() directly and INSERT OR IGNORE", "Breaks on Postgres silently", "tests/test_importer.py is also stale", "Should be deleted"],
+      dataSources: ["None (orphaned)"],
+      tags: ["dead-code", "sqlite-only", "delete-me"]
+    },
+    data_entry: {
+      title: "1_Data_Entry.py — Add Student",
+      purpose: "Form for adding a new student and their accompaniments. Validates via validation.py, writes via database.insert_student().",
+      functions: ["preprocess_student(form) — derives gender + birthday_flag", "preprocess_accompaniment(acc) — same for family member"],
+      issues: ["No pre-check for existing national_id — duplicate rejected by DB UNIQUE constraint with a raw error message"],
+      dataSources: ["Writes to: students, accompaniments"],
+      tags: ["page", "data-entry"]
+    },
+    records: {
+      title: "2_Records.py — Browse Records",
+      purpose: "Browse and filter all student records. Submit deletion requests (entry role) or delete directly (admin role).",
+      functions: ["Filters: country, study_level, birthday_flag, duplicate_flag"],
+      issues: ["Uses fetch_students_df() — shows placeholder values. Should use fetch_full_students_df()", "No name search — only filter by country/level/flags"],
+      dataSources: ["students table (raw)", "accompaniments table"],
+      tags: ["page", "read-heavy"]
+    },
+    dashboard: {
+      title: "3_Dashboard.py — KPI Dashboard",
+      purpose: "Interactive Plotly charts for management overview.",
+      functions: ["4 Plotly charts: bar (country), pie (study level), pie (gender), line (quarterly intake)"],
+      issues: ["BUG line 22: uses fetch_students_df() → all charts show placeholder values. ONE-LINE FIX: change to fetch_full_students_df()"],
+      dataSources: ["fetch_students_df() ← WRONG, should be fetch_full_students_df()"],
+      tags: ["page", "plotly", "BUG"]
+    },
+    import_page: {
+      title: "4_Import.py — Import Info Page",
+      purpose: "Information page only. The bulk import UI was removed per user request. Now shows a note pointing to Data Entry form or CLI script.",
+      functions: [],
+      issues: ["The underlying importer.py module is now orphaned and should be deleted"],
+      dataSources: ["None — static info page"],
+      tags: ["page", "mostly-empty"]
+    },
+    export: {
+      title: "5_Export_Report.py — Export & PDF",
+      purpose: "Filtered export of students/family/enrichment as CSV/Excel, and on-demand executive PDF.",
+      functions: ["Country + gender multiselect filters", "Downloads: Students CSV, Accompaniments CSV, Combined Excel (3 sheets), PDF report"],
+      issues: [],
+      dataSources: ["fetch_full_students_df()", "fetch_accompaniments_df()", "fetch_enrichment_df()"],
+      tags: ["page", "export", "report"]
+    },
+    admin: {
+      title: "6_Admin.py — Admin Panel",
+      purpose: "Admin-only. Approve/reject deletion requests, review soft duplicates side-by-side, auto-remove exact duplicates.",
+      functions: ["resolve_deletion_request(id, action, reviewer)", "find_duplicates(conn)", "auto_remove_exact_duplicates(conn)"],
+      issues: ["Admin direct-delete bypasses deletion_requests audit trail"],
+      dataSources: ["deletion_requests table", "students table (direct delete)"],
+      tags: ["page", "admin-only"]
+    },
+    bulk_import: {
+      title: "scripts/bulk_import.py — CLI Bulk Import",
+      purpose: "One-shot or periodic import of 3-sheet Excel into Neon Postgres. Production tool for historical data and batch updates.",
+      functions: ["import_students(), import_family(), import_enrichment()", "_pg_insert_safe() — per-row savepoint isolation", "clean_nid(), clean_date(), map_relationship(), map_certificate()"],
+      issues: ["Family import NOT idempotent — re-running inserts duplicate accompaniments", "Sheet names must match exactly: 'student data', 'family data', 'more student data'"],
+      dataSources: ["Input: Excel file (3 sheets)", "Output: students, accompaniments, student_enrichment tables"],
+      tags: ["cli", "bulk-import", "production-tool"]
+    },
+    tests: {
+      title: "tests/ — Test Suite",
+      purpose: "14 unit tests for validation.py (comprehensive). test_duplicates.py and test_importer.py exist but quality is unknown; importer tests are stale.",
+      functions: ["test_validation.py: NID format, gender, birth year, birthday flag, form validation"],
+      issues: ["test_importer.py tests SQLite-only code that no longer has a UI caller", "No tests for database.py, report.py, auth.py, or bulk_import.py"],
+      dataSources: ["validation.py functions"],
+      tags: ["tests", "partial-coverage"]
+    },
+    tbl_students: {
+      title: "TABLE: students",
+      purpose: "Primary record for each scholarship recipient. 1,822 rows.",
+      functions: ["national_id: 12-digit Libyan NID (UNIQUE)", "birthday_flag: 1 if NID year ≠ birthday year", "duplicate_flag: 1 if part of a soft-duplicate pair", "~1,800 rows have placeholder study_level/field/country from bulk import"],
+      issues: ["Placeholder values for fields that needed enrichment (see COALESCE view)", "updated_at never auto-updated"],
+      dataSources: [],
+      tags: ["table", "1822-rows"]
+    },
+    tbl_accompaniments: {
+      title: "TABLE: accompaniments",
+      purpose: "Family members accompanying students. 7,748 rows. FK → students.id CASCADE DELETE.",
+      functions: ["relationship: Spouse/Son/Daughter/Sibling", "gender: derived from NID", "birthday_flag: same NID/year cross-check as students"],
+      issues: ["No UNIQUE constraint on (student_id_fk, national_id) — re-running bulk import creates duplicate family rows"],
+      dataSources: [],
+      tags: ["table", "7748-rows"]
+    },
+    tbl_enrichment: {
+      title: "TABLE: student_enrichment",
+      purpose: "Enriched scholarship metadata from 'more student data' sheet. COALESCE-joined with students at query time. 1,860 rows.",
+      functions: ["remaining_study_months: key field for expiry analysis (STATIC — stale over time)", "certificate: authoritative study level (overrides students.study_level)", "study_country: authoritative country (overrides students.country_abroad)"],
+      issues: ["14 students in students table have no matching row here — LEFT JOIN produces NULLs, COALESCE falls back to placeholders", "remaining_study_months is static from import date"],
+      dataSources: [],
+      tags: ["table", "1860-rows", "coalesce-source"]
+    },
+    tbl_deletion: {
+      title: "TABLE: deletion_requests",
+      purpose: "Audit trail for deletion requests. Entry users submit; admins approve or reject.",
+      functions: ["status: pending/approved/rejected", "On approval: student row is hard-deleted (CASCADE)"],
+      issues: ["Admin direct-delete on Records page bypasses this table entirely"],
+      dataSources: [],
+      tags: ["table", "audit-trail"]
+    }
+  };
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('map-tab').style.display = 'none';
+
+    if (tab === 'map') {
+      document.getElementById('map-tab').style.display = 'block';
+      document.querySelectorAll('.tab')[0].classList.add('active');
+    } else if (tab === 'dataflow') {
+      document.getElementById('dataflow-panel').classList.add('active');
+      document.querySelectorAll('.tab')[1].classList.add('active');
+    } else if (tab === 'issues') {
+      document.getElementById('issues-panel').classList.add('active');
+      document.querySelectorAll('.tab')[2].classList.add('active');
+    }
+  }
+
+  function showDetail(id) {
+    const d = nodeData[id];
+    if (!d) return;
+    const panel = document.getElementById('detail-panel');
+    document.getElementById('dp-title').textContent = d.title;
+
+    let html = '';
+    html += `<div class="dp-section"><div class="dp-label">Purpose</div><div class="dp-body">${d.purpose}</div></div>`;
+
+    if (d.functions && d.functions.length) {
+      html += `<div class="dp-section"><div class="dp-label">Key Functions</div><div class="dp-body">`;
+      d.functions.forEach(f => { html += `<div style="margin-bottom:3px">• ${f}</div>`; });
+      html += `</div></div>`;
+    }
+
+    if (d.issues && d.issues.length) {
+      html += `<div class="dp-section"><div class="dp-label" style="color:#FCA5A5">Issues / Bugs</div><div class="dp-body">`;
+      d.issues.forEach(i => { html += `<div style="margin-bottom:3px;color:#FCA5A5">⚠ ${i}</div>`; });
+      html += `</div></div>`;
+    }
+
+    if (d.dataSources && d.dataSources.length) {
+      html += `<div class="dp-section"><div class="dp-label">Data Sources</div><div class="dp-body">`;
+      d.dataSources.forEach(s => { html += `<div style="margin-bottom:3px;color:#2DD4BF">→ ${s}</div>`; });
+      html += `</div></div>`;
+    }
+
+    if (d.tags && d.tags.length) {
+      html += `<div class="dp-section">`;
+      d.tags.forEach(t => {
+        const col = t.includes('BUG') || t.includes('dead') ? '#7F1D1D' : t.includes('critical') ? '#78350F' : '#1E3A5F';
+        html += `<span class="dp-tag" style="background:${col};color:#E2E8F0">${t}</span>`;
+      });
+      html += `</div>`;
+    }
+
+    document.getElementById('dp-content').innerHTML = html;
+    panel.style.display = 'block';
+  }
+
+  function closeDetail() {
+    document.getElementById('detail-panel').style.display = 'none';
+  }
+
+  // Initialise — show map tab
+  switchTab('map');
+</script>
+</body>
+</html>
