@@ -1,6 +1,12 @@
-# Database
+# Database & data files — NEVER commit real data to this repo (it is public)
 data/
 *.db
+*.xlsx
+*.xls
+*.csv
+*.sql
+*.dump
+*.pdf
 
 # Python
 .venv/
