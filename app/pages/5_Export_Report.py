@@ -1,4 +1,4 @@
-"""Export & Report page — CSV/Excel download and quarterly PDF report."""
+"""Export & Report page — filtered CSV/Excel download and executive PDF report."""
 
 import sys
 from pathlib import Path
@@ -12,7 +12,7 @@ import streamlit as st
 
 from app import database as db
 from app.auth import login, logout, require_role
-from app.report import build_quarterly_report
+from app.report import build_executive_report
 
 st.set_page_config(page_title="Export & Report", page_icon="📄", layout="wide")
 authenticated, name, _ = login()
@@ -21,55 +21,98 @@ if not authenticated:
 logout()
 require_role("admin", "entry")
 
-st.title("Export & Quarterly Report")
-df = db.fetch_students_df()
-acc_df = db.fetch_accompaniments_df()
+st.title("Export & Report")
+
+df      = db.fetch_full_students_df()
+acc_df  = db.fetch_accompaniments_df()
+enr_df  = db.fetch_enrichment_df()
 
 if df.empty:
     st.info("Nothing to export yet.")
-else:
-    st.subheader("Data Export")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.download_button(
-            "Download Students CSV",
-            df.to_csv(index=False).encode("utf-8"),
-            file_name=f"students_{date.today()}.csv",
-            mime="text/csv",
-        )
-        st.download_button(
-            "Download Accompaniments CSV",
-            acc_df.to_csv(index=False).encode("utf-8"),
-            file_name=f"accompaniments_{date.today()}.csv",
-            mime="text/csv",
-        )
-    with c2:
-        buf = BytesIO()
-        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-            df.to_excel(writer, sheet_name="Students", index=False)
-            acc_df.to_excel(writer, sheet_name="Accompaniments", index=False)
-        st.download_button(
-            "Download Combined Excel",
-            buf.getvalue(),
-            file_name=f"scholarship_export_{date.today()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+    st.stop()
 
-    st.markdown("---")
-    st.subheader("Quarterly Report (PDF)")
-    years = sorted(pd.to_datetime(df["start_date"]).dt.year.unique(), reverse=True)
-    rc1, rc2 = st.columns(2)
-    with rc1:
-        year = st.selectbox("Year", years)
-    with rc2:
-        quarter = st.selectbox("Quarter", ["Q1", "Q2", "Q3", "Q4"])
+# ── Filters ───────────────────────────────────────────────────────────────────
+st.subheader("Filters")
+fc1, fc2 = st.columns(2)
 
-    if st.button("Generate Quarterly Report", type="primary"):
-        pdf_bytes = build_quarterly_report(df, acc_df, int(year), quarter)
-        st.success("Report generated.")
-        st.download_button(
-            "Download PDF Report",
-            pdf_bytes,
-            file_name=f"scholarship_report_{year}_{quarter}.pdf",
-            mime="application/pdf",
-        )
+with fc1:
+    countries = sorted(df["country_abroad"].dropna().unique().tolist())
+    selected_countries = st.multiselect(
+        "Country", options=countries, default=[], placeholder="All countries"
+    )
+
+with fc2:
+    genders = sorted(df["gender"].dropna().unique().tolist())
+    selected_genders = st.multiselect(
+        "Gender", options=genders, default=[], placeholder="All genders"
+    )
+
+# Apply filters
+filtered_df = df.copy()
+if selected_countries:
+    filtered_df = filtered_df[filtered_df["country_abroad"].isin(selected_countries)]
+if selected_genders:
+    filtered_df = filtered_df[filtered_df["gender"].isin(selected_genders)]
+
+st.caption(f"Showing **{len(filtered_df):,}** of **{len(df):,}** students")
+
+# Filter acc_df to match filtered students
+filtered_student_ids = set(filtered_df["id"].tolist())
+filtered_acc_df = acc_df[acc_df["student_id_fk"].isin(filtered_student_ids)] if "student_id_fk" in acc_df.columns else acc_df
+
+# Filter enr_df to match filtered students
+filtered_nids = set(filtered_df["national_id"].tolist())
+filtered_enr_df = enr_df[enr_df["national_id"].isin(filtered_nids)] if "national_id" in enr_df.columns else enr_df
+
+st.markdown("---")
+
+# ── Data Export ───────────────────────────────────────────────────────────────
+st.subheader("Data Export")
+c1, c2 = st.columns(2)
+with c1:
+    st.download_button(
+        "Download Students CSV",
+        filtered_df.to_csv(index=False).encode("utf-8"),
+        file_name=f"students_{date.today()}.csv",
+        mime="text/csv",
+    )
+    st.download_button(
+        "Download Accompaniments CSV",
+        filtered_acc_df.to_csv(index=False).encode("utf-8"),
+        file_name=f"accompaniments_{date.today()}.csv",
+        mime="text/csv",
+    )
+with c2:
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        filtered_df.to_excel(writer, sheet_name="Students", index=False)
+        filtered_acc_df.to_excel(writer, sheet_name="Accompaniments", index=False)
+        filtered_enr_df.to_excel(writer, sheet_name="Enrichment", index=False)
+    st.download_button(
+        "Download Combined Excel",
+        buf.getvalue(),
+        file_name=f"scholarship_export_{date.today()}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+st.markdown("---")
+
+# ── Executive Report (PDF) ────────────────────────────────────────────────────
+st.subheader("Executive Report (PDF)")
+st.caption("Report is generated from the filtered data above.")
+
+if st.button("Generate Executive Report", type="primary"):
+    with st.spinner("Building report…"):
+        pdf_bytes = build_executive_report(filtered_df, filtered_acc_df, filtered_enr_df)
+    st.success("Report generated.")
+    label = "scholarship_report"
+    if selected_countries:
+        label += "_" + "_".join(c.replace(" ", "-") for c in selected_countries[:2])
+    if selected_genders:
+        label += "_" + "_".join(g.lower() for g in selected_genders)
+    st.download_button(
+        "Download PDF Report",
+        pdf_bytes,
+        file_name=f"{label}_{date.today()}.pdf",
+        mime="application/pdf",
+    )

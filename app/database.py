@@ -284,6 +284,60 @@ def fetch_accompaniments_df():
             return pd.read_sql_query(sql, conn)
 
 
+def fetch_enrichment_df():
+    """Return student_enrichment joined with students (name, student_id) as a DataFrame."""
+    import pandas as pd
+    sql = """
+        SELECT e.*,
+               s.full_name, s.student_id, s.gender, s.birthday,
+               s.country_abroad AS student_country
+        FROM student_enrichment e
+        JOIN students s ON s.national_id = e.national_id
+        ORDER BY e.national_id
+    """
+    with get_conn() as conn:
+        if _USE_POSTGRES:
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(sql)
+            rows = cur.fetchall()
+            return pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
+        else:
+            return pd.read_sql_query(sql, conn)
+
+
+def fetch_full_students_df():
+    """Students joined with enrichment — the canonical view for reports and exports."""
+    import pandas as pd
+    sql = """
+        SELECT
+            s.id, s.national_id, s.student_id, s.full_name, s.birthday,
+            s.gender, s.phone, s.email,
+            COALESCE(e.study_country, s.country_abroad) AS country_abroad,
+            COALESCE(e.certificate, s.study_level)      AS study_level,
+            COALESCE(e.specialization, s.study_field)   AS study_field,
+            COALESCE(e.start_date, s.start_date)        AS start_date,
+            COALESCE(e.end_date,   s.end_date)          AS end_date,
+            COALESCE(e.decision_no, s.decision_no)      AS decision_no,
+            e.duration_months,
+            e.months_already_spent,
+            e.remaining_study_months,
+            s.birthday_flag, s.duplicate_flag, s.duplicate_reason, s.created_at
+        FROM students s
+        LEFT JOIN student_enrichment e ON e.national_id = s.national_id
+        ORDER BY s.created_at DESC
+    """
+    with get_conn() as conn:
+        if _USE_POSTGRES:
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(sql)
+            rows = cur.fetchall()
+            return pd.DataFrame([dict(r) for r in rows]) if rows else pd.DataFrame()
+        else:
+            return pd.read_sql_query(sql, conn)
+
+
 def delete_student(student_pk: int):
     with get_conn() as conn:
         _execute(conn, "DELETE FROM students WHERE id = ?", (student_pk,))
