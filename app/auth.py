@@ -50,18 +50,25 @@ def login() -> tuple[bool, str | None, str | None]:
         return True, "Developer", "dev"
 
     authenticator = stauth.Authenticate(
-        config["credentials"],
-        config["cookie"]["name"],
-        config["cookie"]["key"],
-        config["cookie"]["expiry_days"],
+        credentials=config["credentials"],
+        cookie_name=config["cookie"]["name"],
+        cookie_key=config["cookie"]["key"],
+        cookie_expiry_days=config["cookie"]["expiry_days"],
     )
 
-    name, auth_status, username = authenticator.login("Login", "main")
+    result = authenticator.login(location="main")
+    # 0.4.x returns (name, auth_status, username) or None
+    if result is not None:
+        name, auth_status, username = result
+    else:
+        name = st.session_state.get("name")
+        auth_status = st.session_state.get("authentication_status")
+        username = st.session_state.get("username")
 
     if auth_status is False:
         st.error("Incorrect username or password.")
         return False, None, None
-    if auth_status is None:
+    if not auth_status:
         st.info("Please enter your credentials to continue.")
         return False, None, None
 
@@ -77,7 +84,7 @@ def login() -> tuple[bool, str | None, str | None]:
 def logout():
     authenticator = st.session_state.get("authenticator")
     if authenticator:
-        authenticator.logout("Logout", "sidebar")
+        authenticator.logout(location="sidebar")
     else:
         if st.sidebar.button("Logout"):
             for key in ("role", "username", "authenticator"):
