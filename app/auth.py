@@ -9,8 +9,18 @@ Roles:
   entry  — Data Entry, Records (read-only), Import, Export & Report
 """
 
+import os
 from pathlib import Path
 import streamlit as st
+
+# Inject DATABASE_URL from st.secrets into the environment so database.py picks it up.
+# This runs before database.py is imported, which matters on Streamlit Cloud.
+try:
+    _db_url = st.secrets.get("DATABASE_URL")
+    if _db_url and not os.environ.get("DATABASE_URL"):
+        os.environ["DATABASE_URL"] = _db_url
+except Exception:
+    pass
 
 try:
     import streamlit_authenticator as stauth
