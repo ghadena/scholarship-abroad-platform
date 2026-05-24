@@ -26,10 +26,21 @@ _CREDS_PATH = Path(__file__).parent.parent / ".streamlit" / "credentials.yaml"
 def _load_config() -> dict | None:
     if not _AUTH_AVAILABLE:
         return None
-    if not _CREDS_PATH.exists():
-        return None
-    with open(_CREDS_PATH) as f:
-        return yaml.load(f, Loader=SafeLoader)
+
+    # Streamlit Cloud: secrets are injected via st.secrets, not a file
+    try:
+        raw = st.secrets.get("credentials_yaml")
+        if raw:
+            return yaml.load(raw, Loader=SafeLoader)
+    except Exception:
+        pass
+
+    # Local dev: read from .streamlit/credentials.yaml
+    if _CREDS_PATH.exists():
+        with open(_CREDS_PATH) as f:
+            return yaml.load(f, Loader=SafeLoader)
+
+    return None
 
 
 def login() -> tuple[bool, str | None, str | None]:
