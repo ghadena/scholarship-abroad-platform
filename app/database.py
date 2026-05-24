@@ -63,6 +63,23 @@ CREATE TABLE IF NOT EXISTS accompaniments (
     FOREIGN KEY (student_id_fk) REFERENCES students(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS student_enrichment (
+    id                      SERIAL PRIMARY KEY,
+    national_id             TEXT NOT NULL UNIQUE,
+    decision_no             TEXT,
+    certificate             TEXT,
+    specialization          TEXT,
+    study_country           TEXT,
+    start_date              DATE,
+    end_date                DATE,
+    duration_months         INTEGER,
+    months_already_spent    INTEGER,
+    remaining_study_months  INTEGER,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_nid ON student_enrichment(national_id);
+
 CREATE TABLE IF NOT EXISTS deletion_requests (
     id              SERIAL PRIMARY KEY,
     student_id_fk   INTEGER NOT NULL,
@@ -82,8 +99,9 @@ CREATE INDEX IF NOT EXISTS idx_students_start_date ON students(start_date);
 CREATE INDEX IF NOT EXISTS idx_accomp_student      ON accompaniments(student_id_fk);
 """
 
-_SCHEMA_SQLITE = _SCHEMA_PG.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT") \
-                            .replace("char_length(", "length(")
+_SCHEMA_SQLITE = (_SCHEMA_PG
+                  .replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+                  .replace("char_length(", "length("))
 
 
 # ── Connection context managers ───────────────────────────────────────────────
