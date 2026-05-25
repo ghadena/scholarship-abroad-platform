@@ -38,9 +38,10 @@ SLATE  = "#64748B"
 LIGHT  = "#F0F4FF"
 WHITE  = "#FFFFFF"
 
-W       = 15 * cm
-H_CHART = 7  * cm
-H_WIDE  = 8  * cm
+W       = 15  * cm
+H_CHART = 7.5 * cm
+H_WIDE  = 9   * cm
+H_PIE   = 7   * cm
 
 # ── Arabic font registration ──────────────────────────────────────────────────
 _FONT_DIR  = Path(__file__).parent / "fonts"
@@ -166,6 +167,31 @@ AR = {
     "chart_fields_x":  "الطلاب",
     "chart_avg":       "المتوسط: {v:.2f}",
     "chart_rem_dist":  "توزيع المدة المتبقية للدراسة",
+    "findings_title":  "النتائج الرئيسية",
+    "long_study_title": "فترات دراسة مطوّلة — حالات للمراجعة",
+    "long_study_body":  "{n_long} طالب(ة) يقضي 5 سنوات أو أكثر في الخارج "
+                        "(محتسبةً من تاريخ البداية حتى اليوم). "
+                        "ينبغي مراجعة كل حالة للتأكد من استمرارية التسجيل.",
+    "long_study_none":  "لا توجد حالات بفترة دراسة تتجاوز 5 سنوات في المجموعة المحددة.",
+    "long_study_col_name":    "الاسم",
+    "long_study_col_nid":     "الرقم الوطني",
+    "long_study_col_country": "الدولة",
+    "long_study_col_level":   "المستوى",
+    "long_study_col_field":   "التخصص",
+    "long_study_col_start":   "تاريخ البداية",
+    "long_study_col_end":     "تاريخ النهاية",
+    "long_study_col_years":   "سنوات في الخارج",
+    "large_family_title": "الأسر الكبيرة — حالات استثنائية",
+    "large_family_body":  "{n_large} طالب(ة) لديه 8 أفراد مرافقين أو أكثر. "
+                          "ينبغي إخضاع هذه الأسر لاختبار ضغط لمخاطر تركّز التكاليف.",
+    "large_family_none":  "لا توجد أسر تضم 8 أفراد أو أكثر في المجموعة المحددة.",
+    "large_family_col_name":    "الاسم",
+    "large_family_col_nid":     "الرقم الوطني",
+    "large_family_col_country": "الدولة",
+    "large_family_col_count":   "عدد أفراد الأسرة",
+    "large_family_col_rels":    "صلات القرابة",
+    "footer":          "المصدر: قاعدة بيانات برنامج المنح الدراسية. "
+                       "جميع الأرقام تعكس المجتمع المؤمَّن بتاريخ {report_date}.",
 }
 
 EN = {
@@ -233,7 +259,28 @@ EN = {
     "cross_title":     "Field × Study Level Breakdown (Top 10 Fields)",
     "cross_field":     "Field",
     "findings_title":  "Key Findings",
-    "steps_title":     "Recommended Next Steps",
+    "long_study_title": "Extended Study Periods — Cases for Review",
+    "long_study_body":  "{n_long} student(s) have been abroad for 5 years or more "
+                        "(measured from start date to today). These cases should be "
+                        "individually reviewed to confirm active enrolment status.",
+    "long_study_none":  "No students with a study period exceeding 5 years in the selected group.",
+    "long_study_col_name":    "Name",
+    "long_study_col_nid":     "National ID",
+    "long_study_col_country": "Country",
+    "long_study_col_level":   "Level",
+    "long_study_col_field":   "Field",
+    "long_study_col_start":   "Start Date",
+    "long_study_col_end":     "End Date",
+    "long_study_col_years":   "Years Abroad",
+    "large_family_title": "Large Families — Actuarial Outliers",
+    "large_family_body":  "{n_large} student(s) have 8 or more accompanying family members. "
+                          "These households should be stress-tested for claim-cost concentration risk.",
+    "large_family_none":  "No families with 8 or more members in the selected group.",
+    "large_family_col_name":    "Name",
+    "large_family_col_nid":     "National ID",
+    "large_family_col_country": "Country",
+    "large_family_col_count":   "Family Members",
+    "large_family_col_rels":    "Relationships",
     "footer":          "Source: Scholarship Abroad Platform database. "
                        "All figures reflect the insured population as at {report_date}.",
     "chart_geo_title": "Top 10 Countries by Total Covered People",
@@ -313,7 +360,7 @@ def _chart_geo(students_df, family_df, T, arabic=False):
     by_country["total"] = by_country.sum(axis=1)
     top10 = by_country.nlargest(10, "total")
 
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt.subplots(figsize=(10, 6))
     y = np.arange(len(top10))
     h = 0.4
     s_vals = top10.get("s", pd.Series(0, index=top10.index))
@@ -341,7 +388,7 @@ def _chart_geo(students_df, family_df, T, arabic=False):
 def _chart_person_type(n_students, n_family, T, arabic=False):
     if n_students + n_family == 0:
         return None
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(5, 5))
     vals   = [n_students, n_family]
     lbl_s  = _ar_label(T["chart_students"])    if arabic else T["chart_students"]
     lbl_f  = _ar_label(T["chart_family"])      if arabic else T["chart_family"]
@@ -375,7 +422,7 @@ def _chart_age(all_df, T, arabic=False):
     all_df["age_band"] = pd.cut(all_df["age"], bins=bins, labels=labels, right=False)
     counts = all_df["age_band"].value_counts().reindex(labels, fill_value=0)
 
-    fig, ax = plt.subplots(figsize=(9, 4))
+    fig, ax = plt.subplots(figsize=(10, 4.5))
     bar_colors = [AMBER if lbl in ("0–5","6–12","13–17") else NAVY for lbl in labels]
     xlabels = [_ar_label(l) if arabic else l for l in labels]
     bars = ax.bar(xlabels, counts.values, color=bar_colors, width=0.7)
@@ -443,16 +490,16 @@ def _chart_remaining_months(enrich_df, T, arabic=False):
     display_labels = [_ar_label(l) if arabic else l for l in raw_labels]
     palette = [AMBER, "#F97316", TEAL, NAVY, SLATE]
 
-    fig, ax = plt.subplots(figsize=(9, 4))
-    bars = ax.bar(display_labels, counts.values, color=palette, width=0.7)
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    bars = ax.bar(display_labels, counts.values, color=palette, width=0.6)
     for bar, val in zip(bars, counts.values):
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
                 str(int(val)), ha="center", fontsize=8, color=SLATE)
     title  = _ar_label(T["chart_rem_title"]) if arabic else T["chart_rem_title"]
     ylabel = _ar_label(T["chart_rem_y"])      if arabic else T["chart_rem_y"]
     _style_ax(ax, title, ylabel=ylabel)
-    plt.xticks(rotation=20, ha="right", fontsize=8)
-    fig.tight_layout()
+    plt.xticks(rotation=15, ha="right", fontsize=9)
+    fig.tight_layout(pad=1.5)
     return _fig_to_image(fig, width=W, height=H_CHART)
 
 
@@ -464,7 +511,7 @@ def _chart_study_level(enrich_df, T, arabic=False):
         labels = [_ar_label(str(l)) for l in counts.index]
     else:
         labels = list(counts.index)
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(6, 6))
     _, _, autotexts = ax.pie(
         counts.values, labels=labels, autopct="%1.0f%%",
         colors=[NAVY, TEAL, AMBER, SLATE], startangle=90,
@@ -482,7 +529,7 @@ def _chart_top_fields(enrich_df, T, arabic=False):
     if enrich_df.empty or "specialization" not in enrich_df.columns:
         return None
     top = enrich_df["specialization"].value_counts().head(15)
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt.subplots(figsize=(10, 6))
     ylabels = [_ar_label(str(l)) if arabic else str(l) for l in top.index[::-1]]
     bars = ax.barh(ylabels, top.values[::-1], color=TEAL, height=0.6)
     for bar in bars:
@@ -536,23 +583,26 @@ def build_executive_report(
     family_df: pd.DataFrame,
     enrich_df: pd.DataFrame,
     arabic: bool = False,
+    exclude_overdue: bool = True,
 ) -> bytes:
     """
     Build the full executive PDF and return bytes.
 
-    students_df — from fetch_full_students_df() filtered by caller
-    family_df   — from fetch_accompaniments_df() filtered to match
-    enrich_df   — from fetch_enrichment_df() filtered to match
-    arabic      — if True, produce the Arabic RTL version
+    students_df     — from fetch_full_students_df() filtered by caller
+    family_df       — from fetch_accompaniments_df() filtered to match
+    enrich_df       — from fetch_enrichment_df() filtered to match
+    arabic          — if True, produce the Arabic RTL version
+    exclude_overdue — if True (default), strip students with end_date < today
     """
     if arabic:
         _ensure_arabic_font()
 
     T = AR if arabic else EN
 
-    # ── Strip already-ended students ─────────────────────────────────────────
     today = pd.Timestamp.today()
-    if not students_df.empty and "end_date" in students_df.columns:
+
+    # ── Optionally strip already-ended students ───────────────────────────────
+    if exclude_overdue and not students_df.empty and "end_date" in students_df.columns:
         end_dt = pd.to_datetime(students_df["end_date"], errors="coerce")
         students_df = students_df[end_dt >= today].copy()
 
@@ -563,8 +613,8 @@ def build_executive_report(
         enrich_df["remaining_study_months"] = (
             (end_dates - today).dt.days / 30.44
         ).round().astype("Int64")
-        # Keep only active enrichment rows
-        enrich_df = enrich_df[enrich_df["remaining_study_months"] > 0]
+        if exclude_overdue:
+            enrich_df = enrich_df[enrich_df["remaining_study_months"] > 0]
 
     # ── Filter family to only active students ────────────────────────────────
     if not family_df.empty and not students_df.empty:
@@ -956,31 +1006,91 @@ def build_executive_report(
         story.append(para(heading_txt, h3_s))
         story.append(para(body_txt, body_s))
 
-    story.append(HR())
-    story.append(para(T["steps_title"], h2_s))
+    # ── LONG-STUDY OUTLIERS (5+ years) ───────────────────────────────────────
+    story += [HR(), PageBreak()]
+    story.append(para(T["long_study_title"], h2_s))
 
-    if arabic:
-        steps = [
-            f"التفاوض على شبكة مزودي الخدمة في أكبر 3 دول — فهي تحمل غالبية المجتمع.",
-            f"نمذجة الأقساط على مستوى الأسرة لا الطالب منفرداً، نظراً لمعامل {avg_family}×.",
-            f"تعزيز مزايا طب الأطفال تماشياً مع نسبة {pct_under18}٪ دون الـ 18.",
-            f"بدء إجراءات التجديد/الإنهاء لـ {pct_ending_soon}٪ من الطلاب الذين تبقّى لهم ≤12 شهراً.",
-            "رصد الأسر التي تضم 8 أفراد أو أكثر واختبار مخاطر تركّز التكاليف.",
-            "سد الثغرات في بيانات الجنس والسن قبل التجديد القادم.",
-        ]
+    five_years_ago = today - pd.DateOffset(years=5)
+    if not students_df.empty and "start_date" in students_df.columns:
+        sd = pd.to_datetime(students_df["start_date"], errors="coerce")
+        long_study = students_df[sd <= five_years_ago].copy()
+        long_study["years_abroad"] = ((today - sd[long_study.index]).dt.days / 365.25).round(1)
+        long_study = long_study.sort_values("years_abroad", ascending=False)
+
+        if long_study.empty:
+            story.append(para(T["long_study_none"], body_s))
+        else:
+            n_long = len(long_study)
+            long_intro = T["long_study_body"].format(n_long=n_long)
+            story.append(para(long_intro, body_s))
+
+            ls_cols = ["national_id", "full_name", "country_abroad", "study_level", "start_date", "years_abroad"]
+            ls_cols = [c for c in ls_cols if c in long_study.columns]
+            ls_hdr_map = {
+                "national_id": T.get("long_study_col_nid", "National ID"),
+                "full_name": T.get("long_study_col_name", "Name"),
+                "country_abroad": T.get("long_study_col_country", "Country"),
+                "study_level": T.get("long_study_col_level", "Level"),
+                "start_date": T.get("long_study_col_start", "Start Date"),
+                "years_abroad": T.get("long_study_col_years", "Years Abroad"),
+            }
+            ls_header = [_ar(ls_hdr_map[c]) if arabic else ls_hdr_map[c] for c in ls_cols]
+            ls_rows = [ls_header]
+            for _, row in long_study.head(30).iterrows():
+                r = []
+                for c in ls_cols:
+                    val = str(row[c]) if pd.notna(row[c]) else "—"
+                    r.append(_ar(val) if arabic else val)
+                ls_rows.append(r)
+            col_w = [2.5*cm, 5*cm, 3*cm, 2.5*cm, 2.5*cm, 2*cm][:len(ls_cols)]
+            ls_t = Table(ls_rows, colWidths=col_w)
+            ls_t.setStyle(HDR)
+            story.append(ls_t)
     else:
-        steps = [
-            f"Negotiate provider-network strength in the top 3 countries.",
-            f"Model premiums at the family level given the {avg_family}× multiplier.",
-            f"Strengthen paediatric benefits in line with the {pct_under18}% under-18 share.",
-            f"Initiate renewal/exit processing for the {pct_ending_soon}% with ≤12 months remaining.",
-            "Flag and stress-test households with 8+ members for claim-cost concentration risk.",
-            "Close remaining gender/age data gaps before next renewal.",
-        ]
+        story.append(para(T["long_study_none"], body_s))
 
-    for step in steps:
-        bullet = _ar(f"• {step}") if arabic else f"• {step}"
-        story.append(para(bullet, body_s))
+    # ── LARGE FAMILIES (8+ members) ───────────────────────────────────────────
+    story += [HR(), PageBreak()]
+    story.append(para(T["large_family_title"], h2_s))
+
+    if not family_df.empty and "student_id_fk" in family_df.columns:
+        fam_counts = family_df.groupby("student_id_fk").size().reset_index(name="member_count")
+        large_fam_ids = fam_counts[fam_counts["member_count"] >= 8]["student_id_fk"].tolist()
+
+        if not large_fam_ids or students_df.empty:
+            story.append(para(T["large_family_none"], body_s))
+        else:
+            large_students = students_df[students_df["id"].isin(large_fam_ids)].copy()
+            large_students = large_students.merge(
+                fam_counts.rename(columns={"student_id_fk": "id"}), on="id", how="left"
+            ).sort_values("member_count", ascending=False)
+
+            n_large = len(large_students)
+            lf_intro = T["large_family_body"].format(n_large=n_large)
+            story.append(para(lf_intro, body_s))
+
+            lf_cols = ["national_id", "full_name", "country_abroad", "member_count"]
+            lf_cols = [c for c in lf_cols if c in large_students.columns]
+            lf_hdr_map = {
+                "national_id": T.get("large_family_col_nid", "National ID"),
+                "full_name": T.get("large_family_col_name", "Name"),
+                "country_abroad": T.get("large_family_col_country", "Country"),
+                "member_count": T.get("large_family_col_count", "Family Members"),
+            }
+            lf_header = [_ar(lf_hdr_map[c]) if arabic else lf_hdr_map[c] for c in lf_cols]
+            lf_rows = [lf_header]
+            for _, row in large_students.iterrows():
+                r = []
+                for c in lf_cols:
+                    val = str(int(row[c])) if c == "member_count" and pd.notna(row[c]) else (str(row[c]) if pd.notna(row[c]) else "—")
+                    r.append(_ar(val) if arabic else val)
+                lf_rows.append(r)
+            col_w = [3*cm, 6*cm, 4*cm, 3*cm][:len(lf_cols)]
+            lf_t = Table(lf_rows, colWidths=col_w)
+            lf_t.setStyle(HDR)
+            story.append(lf_t)
+    else:
+        story.append(para(T["large_family_none"], body_s))
 
     story.append(Spacer(1, 12))
     footer_txt = T["footer"].format(report_date=date.today().isoformat())

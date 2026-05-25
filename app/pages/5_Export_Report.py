@@ -115,7 +115,13 @@ st.markdown("---")
 st.subheader("Executive Report (PDF)")
 st.caption(
     "Reports are generated from the filtered data above. "
-    "Ended students (past end date) are automatically excluded from both versions."
+    "Use the checkbox below to control whether already-ended students are included."
+)
+
+exclude_overdue = st.checkbox(
+    "Exclude students whose study period has already ended (recommended)",
+    value=True,
+    key="excl_overdue",
 )
 
 def _filter_label():
@@ -137,6 +143,7 @@ with rep1:
             pdf_en = build_executive_report(
                 filtered_df.copy(), filtered_acc_df.copy(), filtered_enr_df.copy(),
                 arabic=False,
+                exclude_overdue=exclude_overdue,
             )
         st.session_state["pdf_en"] = pdf_en
         st.success("English report ready.")
@@ -157,6 +164,7 @@ with rep2:
             pdf_ar = build_executive_report(
                 filtered_df.copy(), filtered_acc_df.copy(), filtered_enr_df.copy(),
                 arabic=True,
+                exclude_overdue=exclude_overdue,
             )
         st.session_state["pdf_ar"] = pdf_ar
         st.success("التقرير العربي جاهز.")
