@@ -19,7 +19,7 @@ authenticated, name, _ = login()
 if not authenticated:
     st.stop()
 logout()
-require_role("admin", "entry")
+require_role("admin", "entry", "viewer")
 
 st.title("Export & Report")
 

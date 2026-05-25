@@ -17,7 +17,7 @@ authenticated, name, _ = login()
 if not authenticated:
     st.stop()
 logout()
-require_role("admin", "entry")
+require_role("admin", "entry", "viewer")
 
 STUDY_LEVELS  = ["Bachelors", "Masters", "Doctorate", "Certificate"]
 RELATIONSHIPS = ["Spouse", "Son", "Daughter", "Sibling"]
