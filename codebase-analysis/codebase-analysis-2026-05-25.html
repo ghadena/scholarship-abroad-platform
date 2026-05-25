@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scholarship Abroad Platform — Architecture Map (2026-05-25)</title>
+<style>
+:root {
+  --bg: #0F0F0F; --panel: #161616; --panel-2: #1c1c1c; --border: #2a2a2a;
+  --text: #e8e8e8; --muted: #8a8a8a;
+  --client: #4ea1ff; --route: #7bd389; --service: #c792ea; --db: #ffb86b;
+  --external: #ff6b9d; --critical: #ff3860; --accent: #f5b942; --accent-2: #ff7a45;
+  --entry: #4ea1ff; --page: #7bd389; --core: #c792ea; --data: #ffb86b; --cli: #ff6b9d;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+#toolbar { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; z-index: 10; }
+#toolbar h1 { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; margin-right: 6px; }
+.chip { padding: 4px 11px; border-radius: 20px; border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); font-size: 11px; cursor: pointer; transition: all .15s; white-space: nowrap; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 600; }
+#zoom-btns { margin-left: auto; display: flex; gap: 6px; }
+.zbtn { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-size: 12px; cursor: pointer; }
+.zbtn:hover { border-color: var(--accent); }
+#main { display: flex; flex: 1; overflow: hidden; }
+#canvas-wrap { flex: 1; overflow: hidden; position: relative; cursor: grab; }
+#canvas-wrap.panning { cursor: grabbing; }
+#svg-root { width: 100%; height: 100%; display: block; }
+#sidebar { width: 300px; min-width: 300px; background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 14px; font-size: 12px; flex-shrink: 0; }
+#sidebar h2 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+.sb-section { margin-bottom: 14px; }
+.sb-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 4px; }
+.sb-value { color: var(--text); line-height: 1.5; }
+.sb-plain { color: var(--accent); font-style: italic; line-height: 1.5; margin-top: 4px; }
+.sb-path { font-family: monospace; font-size: 11px; color: #7bd389; word-break: break-all; }
+.sb-note { color: var(--muted); padding: 2px 0; line-height: 1.4; }
+.sb-note::before { content: '• '; color: var(--accent); }
+.edge-item { padding: 3px 0; color: var(--muted); }
+.edge-item span { color: var(--text); }
+.finding { padding: 6px 0; border-bottom: 1px solid var(--border); line-height: 1.5; color: var(--muted); }
+.finding:last-child { border-bottom: none; }
+.finding strong { color: var(--accent); }
+.legend { display: flex; flex-direction: column; gap: 5px; }
+.leg-row { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.leg-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+.badge-fix { background: #22c55e; color: #000; border-radius: 50%; width: 14px; height: 14px; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.badge-bug { background: #ef4444; color: #fff; border-radius: 50%; width: 14px; height: 14px; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>Scholarship Abroad — Architecture Map</h1>
+  <div id="chips"></div>
+  <div id="zoom-btns">
+    <button class="zbtn" onclick="fitView()">Fit</button>
+    <button class="zbtn" onclick="zoom(1.2)">+</button>
+    <button class="zbtn" onclick="zoom(0.8)">−</button>
+  </div>
+</div>
+<div id="main">
+  <div id="canvas-wrap">
+    <svg id="svg-root" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr-critical" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ff3860"/></marker>
+        <marker id="arr-db" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ffb86b"/></marker>
+        <marker id="arr-normal" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#555"/></marker>
+        <marker id="arr-mount" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ea1ff"/></marker>
+        <marker id="arr-api" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#ff6b9d"/></marker>
+      </defs>
+      <g id="scene"></g>
+    </svg>
+  </div>
+  <div id="sidebar">
+    <h2>Architecture Map</h2>
+    <div id="sb-content"></div>
+  </div>
+</div>
+<script>
+// ─────────────────────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────────────────────
+
+const clusters = [
+  { id: 'entry',  label: 'Entry & Auth',   x: 30,   y: 60,  w: 200, h: 600, color: '#4ea1ff22' },
+  { id: 'pages',  label: 'Pages (UI)',      x: 270,  y: 60,  w: 200, h: 600, color: '#7bd38922' },
+  { id: 'core',   label: 'Core Logic',      x: 510,  y: 60,  w: 200, h: 600, color: '#c792ea22' },
+  { id: 'data',   label: 'Data Layer',      x: 750,  y: 60,  w: 200, h: 600, color: '#ffb86b22' },
+  { id: 'cli',    label: 'CLI Scripts',     x: 990,  y: 60,  w: 200, h: 600, color: '#ff6b9d22' },
+  { id: 'ext',    label: 'External',        x: 1230, y: 60,  w: 180, h: 600, color: '#2a2a2a' },
+];
+
+const N = (id, cluster, label, sub, x, y, w, h, color, opts = {}) =>
+  ({ id, cluster, label, sub, x, y, w, h, color, ...opts });
+
+const nodes = [
+  N('main', 'entry', 'main.py', 'Streamlit entry point', 40, 90, 180, 64, 'entry', {
+    role: 'App entry point — initialises schema, checks auth, renders welcome KPIs.',
+    plain: 'The front door. It starts the database, checks who you are, and shows the home page with headline numbers.',
+    path: 'app/main.py:22',
+    notes: ['line:22 — init_db() called on every startup', 'line:51-52 — KPIs use fetch_students_df (not full)', 'Welcome page only; navigation handled by Streamlit multipage'],
+    tag: ['overview', 'all'],
+    critical: true,
+  }),
+  N('auth', 'entry', 'auth.py', 'Login + DATABASE_URL injection', 40, 190, 180, 72, 'entry', {
+    role: 'Handles bcrypt login via streamlit-authenticator; injects DATABASE_URL from st.secrets into os.environ before database.py loads.',
+    plain: 'The bouncer. It checks your password and tells the database layer whether to use the cloud database or the local one.',
+    path: 'app/auth.py:19',
+    notes: ['line:19-21 — DATABASE_URL injected at module import time', 'line:42 — reads credentials_yaml from st.secrets on Cloud', 'line:54 — login() returns (authenticated, name, username)', 'CRITICAL: must be imported before database.py on every page'],
+    tag: ['overview', 'auth', 'all'],
+    critical: true,
+  }),
+  N('validation', 'entry', 'validation.py', 'Libyan NID rules + form checks', 40, 300, 180, 72, 'entry', {
+    role: 'Validates 12-digit Libyan NIDs: extracts gender (digit 1) and birth year (digits 2–5), cross-checks birthday, validates all required form fields.',
+    plain: 'Knows the rules of Libyan ID numbers. Checks that the ID is real, figures out gender and birth year from it, and refuses bad form entries.',
+    path: 'app/validation.py:13',
+    notes: ['line:13 — is_valid_nid_format(): must be 12 numeric digits', 'line:17 — derive_gender(): digit[0]==1 → Male, 2 → Female', 'line:24 — derive_birth_year(): NID[1:5]', 'line:43 — validate_student_form(): returns list of error strings'],
+    tag: ['overview', 'data-entry', 'all'],
+  }),
+
+  N('page_entry', 'pages', '1_Data_Entry.py', 'Web form: student + family', 280, 90, 180, 64, 'route', {
+    role: 'Streamlit form for adding one student and their accompanying family members, with live NID-derived hints.',
+    plain: 'The data entry form. Staff fill in a student\'s details and add family members. It checks the ID number and shows derived gender/birth year instantly.',
+    path: 'app/pages/1_Data_Entry.py:132',
+    notes: ['line:27-28 — derive_gender + verify_birthday called on NID change', 'line:125 — validate_student_form() before save', 'line:132 — db.insert_student(form, accompaniments)'],
+    tag: ['overview', 'data-entry', 'all'],
+    critical: true,
+  }),
+  N('page_records', 'pages', '2_Records.py', 'Browse, filter, delete', 280, 185, 180, 64, 'route', {
+    role: 'Browse and filter all student records; request or execute deletions; shows remaining months calculated dynamically from end_date.',
+    plain: 'The filing cabinet. You can search and filter all students, see who is ending soon, and ask for a student to be deleted (or delete directly if admin).',
+    path: 'app/pages/2_Records.py:33',
+    notes: ['line:23 — fetch_full_students_df() ✓ correct', 'line:33 — remaining_study_months recalculated: (end_date - today).dt.days / 30.44', 'line:205 — create_deletion_request() for entry role', 'line:215 — delete_student() for admin direct delete'],
+    tag: ['overview', 'records', 'all'],
+  }),
+  N('page_dashboard', 'pages', '3_Dashboard.py', 'KPI charts (Plotly)', 280, 280, 180, 64, 'route', {
+    role: 'Interactive Plotly dashboard showing KPIs and charts for active students only (end_date >= today).',
+    plain: 'The summary screen with live charts. Shows how many students are where, what they\'re studying, and whether there are any duplicates to worry about.',
+    path: 'app/pages/3_Dashboard.py:23',
+    notes: ['line:23 — fetch_full_students_df() ✓ correct (was fixed)', 'line:20 — filters to active students (end_date >= today)', 'line:96-100 — duplicate warning banner if any dup flags exist', 'Charts: country bar, study-level pie, gender pie, quarterly intake line'],
+    tag: ['overview', 'dashboard', 'all'],
+  }),
+  N('page_import', 'pages', '4_Import.py', 'Import info page', 280, 375, 180, 54, 'route', {
+    role: 'Static info page explaining how to run the CLI bulk import script.',
+    plain: 'A help page that tells you to use the command-line script to load large batches of data.',
+    path: 'app/pages/4_Import.py',
+    notes: ['No data operations — display only', 'Points to scripts/bulk_import.py for actual import'],
+    tag: ['import', 'all'],
+  }),
+  N('page_export', 'pages', '5_Export_Report.py', 'CSV / Excel / PDF export', 280, 458, 180, 64, 'route', {
+    role: 'Filter UI + download buttons for CSV, Excel, and bilingual (AR/EN) executive PDF report; exposes exclude_overdue checkbox.',
+    plain: 'The export screen. Filter by country, gender, study level, then download a spreadsheet or a polished PDF report in Arabic or English.',
+    path: 'app/pages/5_Export_Report.py:143',
+    notes: ['line:143 — build_executive_report(…, arabic=False, exclude_overdue=…)', 'line:164 — build_executive_report(…, arabic=True)', 'exclude_overdue checkbox defaults to True (strips end_date < today)', '"Specialization" added to study level filter options'],
+    tag: ['overview', 'report', 'export', 'all'],
+    critical: true,
+  }),
+  N('page_admin', 'pages', '6_Admin.py', 'Admin: deletions + duplicates', 280, 553, 180, 64, 'route', {
+    role: 'Admin-only page: approve/reject deletion requests, review soft duplicates, auto-remove exact duplicates.',
+    plain: 'The admin control room. Admins approve or reject delete requests here, and can automatically clean up exact duplicates.',
+    path: 'app/pages/6_Admin.py:64',
+    notes: ['line:47/51 — resolve_deletion_request(approved/rejected)', 'line:64 — find_duplicates(conn)', 'line:94/98 — delete_student() for duplicate resolution', 'line:127 — auto_remove_exact_duplicates(conn)', 'Role-gated: admin only'],
+    tag: ['admin', 'duplicates', 'all'],
+  }),
+
+  N('report', 'core', 'report.py', 'Executive PDF builder', 520, 90, 180, 80, 'service', {
+    role: 'Builds bilingual (AR/EN) executive PDF using ReportLab + matplotlib; supports exclude_overdue filter and two outlier sections.',
+    plain: 'The report factory. Give it student data and it generates a polished management report — in Arabic or English — with charts, tables, and outlier flags.',
+    path: 'app/report.py:519',
+    notes: ['line:36-53 — Arabic via Amiri-Regular.ttf + arabic_reshaper + python-bidi', 'line:56-192 — ~100-key AR+EN translation dicts', 'line:563 — exclude_overdue strips end_date < today before all calcs', 'New sections: long-study (5yr+, ~line:1153) + large-family (8+, ~line:1203)', '1100 lines total'],
+    tag: ['overview', 'report', 'all'],
+    critical: true,
+  }),
+  N('duplicates', 'core', 'duplicates.py', 'Soft + exact dup detection', 520, 205, 180, 72, 'service', {
+    role: 'Finds soft duplicates (any matching field) and exact duplicates; flags both rows; auto-removes lower-priority exact dupes.',
+    plain: 'The duplicate spotter. After every insert it checks whether the new record looks the same as an existing one, and flags both if so.',
+    path: 'app/duplicates.py:9',
+    notes: ['line:9-50 — find_duplicates(): exact + soft pairs', 'line:53-100 — flag_soft_duplicates(): resets all flags then re-flags', 'line:103-145 — auto_remove_exact_duplicates(): deletes higher-id in group', 'O(n²) self-join — monitor at >10k students'],
+    tag: ['overview', 'duplicates', 'admin', 'all'],
+  }),
+
+  N('database', 'data', 'database.py', 'Dual Postgres/SQLite layer', 760, 90, 180, 88, 'db', {
+    role: 'Schema definition, connection managers, and all CRUD + cached fetch functions for both Neon Postgres and SQLite.',
+    plain: 'The database brain. It knows how to talk to either the cloud database or the local one, and provides all the functions for reading and writing data.',
+    path: 'app/database.py:22',
+    notes: ['line:22 — _USE_POSTGRES = bool(DATABASE_URL) — set once at import time', 'line:109-154 — get_conn() / _pg_conn() / _sqlite_conn() context managers', 'line:267 — fetch_full_students_df(): canonical COALESCE join (enrichment wins)', 'line:253 — calls flag_soft_duplicates() after every web insert', 'Caches: @st.cache_data(ttl=300) on all fetch functions'],
+    tag: ['overview', 'all'],
+    critical: true,
+  }),
+  N('students_tbl', 'data', 'students', 'DB table: 1,854 rows', 760, 215, 180, 56, 'db', {
+    role: 'Primary student table with NID, student_id, personal details, and flag columns; study fields are placeholder — enrichment overrides at read time.',
+    plain: 'The main student list. Holds who they are and basic info. The detailed study information comes from a separate enrichment table.',
+    path: 'app/database.py:30',
+    notes: ['national_id UNIQUE + CHECK char_length=12', 'student_id UNIQUE — conflict → ? suffix + duplicate_flag=1', 'study_level CHECK: Bachelors/Masters/Doctorate/Certificate only', 'duplicate_flag=1 + duplicate_reason for NID dups or student_id conflicts'],
+    tag: ['all'],
+  }),
+  N('enrichment_tbl', 'data', 'student_enrichment', 'DB table: 1,860 rows', 760, 305, 180, 64, 'db', {
+    role: 'Authoritative study details (certificate, specialization, country, dates); LEFT JOINed with students via COALESCE at read time.',
+    plain: 'The detailed study file. Holds the real degree, country, start and end dates for each student. Wins over the placeholder values in the main table.',
+    path: 'app/database.py:68',
+    notes: ['national_id UNIQUE — links to students without FK constraint', 'remaining_study_months NOT stored — always (end_date − today)/30.44', '"Specialization" lives here only — not in students.study_level CHECK', 'COALESCE in fetch_full_students_df(): enrichment wins over placeholder'],
+    tag: ['all'],
+  }),
+  N('accomp_tbl', 'data', 'accompaniments', 'DB table: 8,100+ rows', 760, 405, 180, 64, 'db', {
+    role: 'Family members accompanying each student; no UNIQUE constraint — re-running import without TRUNCATE creates duplicates.',
+    plain: 'The family list. Each row is a spouse, child, or sibling accompanying a student. WARNING: running the import twice without clearing this table will double the family entries.',
+    path: 'app/database.py:54',
+    notes: ['NO unique constraint — re-import without TRUNCATE = duplicates', 'relationship CHECK: Spouse/Son/Daughter/Sibling/Unknown', 'birthday_flag=1 when NID year ≠ birthday year', 'NIDs zero-padded to 12 digits when malformed'],
+    tag: ['all'],
+  }),
+  N('deletion_tbl', 'data', 'deletion_requests', 'DB table: audit trail', 760, 505, 180, 54, 'db', {
+    role: 'Audit log for deletion requests — entry role requests, admin approves or rejects; approved triggers CASCADE delete.',
+    plain: 'The delete request log. Entry staff request deletions here; admins approve or refuse. If approved, the student is permanently deleted.',
+    path: 'app/database.py:85',
+    notes: ['status CHECK: pending/approved/rejected', 'ON DELETE CASCADE from students(id)', 'reviewed_by + reviewed_at stamped on resolution'],
+    tag: ['admin', 'all'],
+  }),
+
+  N('bulk_import', 'cli', 'bulk_import.py', 'Main import CLI', 1000, 90, 180, 80, 'external', {
+    role: 'One-shot three-sheet Excel → Postgres import with per-row SAVEPOINTs, NID duplicate flagging, student_id conflict ? suffix, and enrichment upsert.',
+    plain: 'The big data loader. Point it at the Excel file and it loads all students, their families, and their study details into the database — safely, even if some rows have problems.',
+    path: 'scripts/bulk_import.py:112',
+    notes: ['import_students() line:112 — flags dup NIDs; ? suffix on student_id conflict', 'import_family() line:206 — Unknown for unrecognised relationships; skip student/موفد rows', 'import_enrichment() line:258 — does NOT write remaining_study_months', 'Per-row SAVEPOINTs: one bad row cannot abort entire transaction'],
+    tag: ['overview', 'import', 'all'],
+    critical: true,
+  }),
+  N('dq_report', 'cli', 'generate_data_quality_report.py', 'Data quality Excel', 1000, 200, 180, 72, 'external', {
+    role: 'Queries Neon directly and produces a 7-sheet Excel workbook flagging every known data quality issue.',
+    plain: 'The quality checker. Runs against the live database and produces a spreadsheet showing every problem: missing IDs, birthday mismatches, unknown family relationships, etc.',
+    path: 'scripts/generate_data_quality_report.py',
+    notes: ['Sheet 2 catches student_id LIKE \'%?\' (conflict-flagged records)', 'Sheets: dup NIDs, missing IDs, family NID issues, same-name diff NID, orphaned enrichment, birthday mismatches, summary', 'xlsxwriter for formatting; Postgres-only (no SQLite fallback)'],
+    tag: ['import', 'all'],
+  }),
+  N('find_missing', 'cli', 'find_missing_students.py', 'Diff DB vs Excel', 1000, 305, 180, 64, 'external', {
+    role: 'Compares Excel NIDs with DB NIDs; exports a re-importable Excel of missing students and their families.',
+    plain: 'The gap finder. Compares your Excel file to the database and exports anyone who is in the spreadsheet but not yet in the system.',
+    path: 'scripts/find_missing_students.py',
+    notes: ['Reads all 3 Excel sheets; deduplicates by NID', 'Exports missing_students_YYYY-MM-DD.xlsx for import_missing_students.py', 'Handles scientific-notation NID floats via clean_nid()'],
+    tag: ['import', 'all'],
+  }),
+  N('import_missing', 'cli', 'import_missing_students.py', 'Import gap file', 1000, 403, 180, 64, 'external', {
+    role: 'Imports the output of find_missing_students.py; handles student_id conflicts with ? suffix.',
+    plain: 'The gap filler. Takes the "missing students" file from find_missing_students and loads those students into the database.',
+    path: 'scripts/import_missing_students.py',
+    notes: ['Imports from import_family() in bulk_import.py', 'ON CONFLICT (national_id) DO NOTHING for students', 'student_id conflict → NID fallback + duplicate_flag=1'],
+    tag: ['import', 'all'],
+  }),
+  N('check_count', 'cli', 'check_db_count.py', 'Quick row count check', 1000, 500, 180, 54, 'external', {
+    role: 'Prints row counts for students, accompaniments, and student_enrichment tables.',
+    plain: 'A quick sanity check. Run it to confirm the database has the right number of rows after an import.',
+    path: 'scripts/check_db_count.py',
+    notes: ['Postgres-only (psycopg2 direct)', 'No app.database dependency — standalone'],
+    tag: ['import', 'all'],
+  }),
+
+  N('neon', 'ext', 'Neon Postgres', 'eu-central-1, free tier', 1240, 120, 160, 64, 'external', {
+    role: 'Serverless Postgres database; scales to zero after 5 min idle; cold start ~1-2s.',
+    plain: 'The cloud database. Stores all the real data. It sleeps when no one is using the app and wakes up in about 2 seconds.',
+    path: 'Neon console: console.neon.tech',
+    notes: ['Scales to zero after 5min idle — cold start ~1-2s', 'Free tier; eu-central-1', 'DATABASE_URL injected via st.secrets → os.environ'],
+    tag: ['all'],
+  }),
+  N('streamlit_cloud', 'ext', 'Streamlit Cloud', 'Auto-deploy on push to main', 1240, 220, 160, 64, 'external', {
+    role: 'Hosts the Streamlit app; auto-deploys on every push to main; ephemeral filesystem.',
+    plain: 'Where the app lives on the internet. Every code push automatically updates it. Files saved locally disappear on redeploy — only the database persists.',
+    path: 'share.streamlit.io',
+    notes: ['Ephemeral filesystem — no local file persistence', 'Auto-deploy: push to main → rebuild in ~2 min', 'Secrets: DATABASE_URL + credentials_yaml'],
+    tag: ['all'],
+  }),
+  N('excel_source', 'ext', 'new_excel.xlsx', 'Source data file (external)', 1240, 320, 160, 56, 'external', {
+    role: 'Three-sheet Excel from the source organisation containing student, family, and enrichment data.',
+    plain: 'The original Excel file from the scholarship office. Not in the repo — loaded manually via the CLI import script.',
+    path: '/path/to/new_excel.xlsx (not in repo)',
+    notes: ['Sheets: "student data", "family data", "more student data"', 'Not committed to git (.gitignore blocks *.xlsx)', 'Column names are case-sensitive in bulk_import.py'],
+    tag: ['import', 'all'],
+  }),
+];
+
+const edges = [
+  // Critical path: auth → database → fetch → report
+  { from: 'main',        to: 'auth',         kind: 'critical', label: '1 · import first', tag: ['overview','auth','all'] },
+  { from: 'auth',        to: 'database',     kind: 'critical', label: '2 · inject DATABASE_URL:19', tag: ['overview','auth','all'] },
+  { from: 'main',        to: 'database',     kind: 'critical', label: '3 · init_db():22', tag: ['overview','all'] },
+  { from: 'page_entry',  to: 'database',     kind: 'critical', label: 'insert_student():132', tag: ['overview','data-entry','all'] },
+  { from: 'page_export', to: 'report',       kind: 'critical', label: 'build_executive_report():143', tag: ['overview','report','all'] },
+  { from: 'bulk_import', to: 'database',     kind: 'critical', label: 'get_conn() + init_db()', tag: ['overview','import','all'] },
+
+  // DB reads
+  { from: 'main',         to: 'students_tbl',    kind: 'db', label: 'fetch_students_df():51', tag: ['all'] },
+  { from: 'page_records', to: 'students_tbl',    kind: 'db', label: 'fetch_full_students_df():23', tag: ['records','all'] },
+  { from: 'page_records', to: 'accomp_tbl',      kind: 'db', label: 'fetch_accompaniments_df()', tag: ['records','all'] },
+  { from: 'page_dashboard',to: 'students_tbl',   kind: 'db', label: 'fetch_full_students_df():23', tag: ['dashboard','all'] },
+  { from: 'page_dashboard',to: 'accomp_tbl',     kind: 'db', label: 'fetch_accompaniments_df():24', tag: ['dashboard','all'] },
+  { from: 'page_export',  to: 'students_tbl',    kind: 'db', label: 'fetch_full_students_df()', tag: ['report','export','all'] },
+  { from: 'page_export',  to: 'enrichment_tbl',  kind: 'db', label: 'fetch_enrichment_df()', tag: ['report','export','all'] },
+  { from: 'page_export',  to: 'accomp_tbl',      kind: 'db', label: 'fetch_accompaniments_df()', tag: ['report','export','all'] },
+  { from: 'page_admin',   to: 'deletion_tbl',    kind: 'db', label: 'fetch_deletion_requests_df()', tag: ['admin','all'] },
+  { from: 'report',       to: 'students_tbl',    kind: 'db', label: 'reads students_df', tag: ['report','all'] },
+  { from: 'report',       to: 'enrichment_tbl',  kind: 'db', label: 'reads enrich_df', tag: ['report','all'] },
+
+  // DB writes
+  { from: 'page_entry',  to: 'students_tbl',    kind: 'db', label: 'INSERT student', tag: ['data-entry','all'] },
+  { from: 'page_entry',  to: 'accomp_tbl',      kind: 'db', label: 'INSERT accompaniments', tag: ['data-entry','all'] },
+  { from: 'page_records',to: 'deletion_tbl',    kind: 'db', label: 'create_deletion_request():205', tag: ['records','all'] },
+  { from: 'page_admin',  to: 'deletion_tbl',    kind: 'db', label: 'resolve_deletion_request():47', tag: ['admin','all'] },
+  { from: 'page_admin',  to: 'students_tbl',    kind: 'db', label: 'delete_student():94', tag: ['admin','all'] },
+  { from: 'bulk_import', to: 'students_tbl',    kind: 'db', label: 'INSERT ON CONFLICT flag', tag: ['import','all'] },
+  { from: 'bulk_import', to: 'accomp_tbl',      kind: 'db', label: 'INSERT (no upsert)', tag: ['import','all'] },
+  { from: 'bulk_import', to: 'enrichment_tbl',  kind: 'db', label: 'INSERT ON CONFLICT UPDATE', tag: ['import','all'] },
+
+  // Core logic calls
+  { from: 'page_entry',  to: 'validation',   kind: 'normal', label: 'validate_student_form():125', tag: ['data-entry','all'] },
+  { from: 'database',    to: 'duplicates',   kind: 'normal', label: 'flag_soft_duplicates():253', tag: ['duplicates','all'] },
+  { from: 'page_admin',  to: 'duplicates',   kind: 'normal', label: 'find_duplicates():64', tag: ['admin','duplicates','all'] },
+  { from: 'bulk_import', to: 'validation',   kind: 'normal', label: 'derive_gender/verify_birthday:21', tag: ['import','all'] },
+  { from: 'import_missing',to: 'bulk_import',kind: 'normal', label: 'imports import_family()', tag: ['import','all'] },
+  { from: 'find_missing',  to: 'excel_source',kind: 'api', label: 'reads Excel', tag: ['import','all'] },
+  { from: 'bulk_import',   to: 'excel_source',kind: 'api', label: 'reads 3 sheets', tag: ['import','all'] },
+
+  // External connections
+  { from: 'database',   to: 'neon',           kind: 'api', label: 'psycopg2 sslmode=require', tag: ['all'] },
+  { from: 'dq_report',  to: 'neon',           kind: 'api', label: 'psycopg2 direct', tag: ['import','all'] },
+  { from: 'check_count',to: 'neon',           kind: 'api', label: 'psycopg2 direct', tag: ['import','all'] },
+  { from: 'auth',       to: 'streamlit_cloud',kind: 'mount', label: 'reads st.secrets', tag: ['auth','all'] },
+  { from: 'database',   to: 'students_tbl',   kind: 'mount', label: 'COALESCE join view', tag: ['all'] },
+  { from: 'students_tbl',to: 'enrichment_tbl',kind: 'db',   label: 'LEFT JOIN ON national_id', tag: ['all'] },
+];
+
+const FIXES = {};
+
+const KNOWN_BUGS = {
+  'accomp_tbl': [
+    { sev: 'high', ref: 'database.py:54', t: 'No UNIQUE constraint — re-running import without TRUNCATE creates duplicate family rows' },
+  ],
+  'page_import': [
+    { sev: 'low', ref: 'app/pages/4_Import.py', t: 'Info-only page; no in-app bulk import UI — users must use CLI' },
+  ],
+};
+
+// ─────────────────────────────────────────────────────────────
+// FILTER CHIPS
+// ─────────────────────────────────────────────────────────────
+const CHIPS = [
+  { id: 'overview',   label: 'Overview (critical path)' },
+  { id: 'auth',       label: 'Auth' },
+  { id: 'data-entry', label: 'Data Entry' },
+  { id: 'records',    label: 'Records' },
+  { id: 'dashboard',  label: 'Dashboard' },
+  { id: 'report',     label: 'Report' },
+  { id: 'export',     label: 'Export' },
+  { id: 'import',     label: 'Import' },
+  { id: 'admin',      label: 'Admin' },
+  { id: 'duplicates', label: 'Duplicates' },
+  { id: 'all',        label: 'Show all wires' },
+  { id: 'bugs',       label: '🐛 Known issues' },
+];
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+let activeFilter = 'overview';
+let selectedNode = null;
+let tx = -80, ty = 20, scale = 0.72;
+let dragging = false, lastX = 0, lastY = 0;
+
+// ─────────────────────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────────────────────
+const svg = document.getElementById('scene');
+const EDGE_COLORS = { critical:'#ff3860', db:'#ffb86b', normal:'#555', mount:'#4ea1ff', api:'#ff6b9d' };
+const NODE_COLORS = { entry:'#4ea1ff', route:'#7bd389', service:'#c792ea', db:'#ffb86b', external:'#ff6b9d' };
+
+function nodeCenter(n) { return { x: n.x + n.w/2, y: n.y + n.h/2 }; }
+
+function edgeVisible(e) {
+  if (activeFilter === 'bugs') return false;
+  if (activeFilter === 'all') return true;
+  if (activeFilter === 'overview') return e.tag.includes('overview');
+  return e.tag.includes(activeFilter);
+}
+
+function nodeVisible(n) {
+  if (activeFilter === 'bugs') return Object.keys(KNOWN_BUGS).includes(n.id);
+  if (activeFilter === 'all') return true;
+  if (activeFilter === 'overview') return n.tag.includes('overview');
+  return n.tag.includes(activeFilter);
+}
+
+function connectedNodeIds(nodeId) {
+  const ids = new Set([nodeId]);
+  edges.forEach(e => {
+    if (e.from === nodeId) ids.add(e.to);
+    if (e.to === nodeId) ids.add(e.from);
+  });
+  return ids;
+}
+
+function render() {
+  svg.innerHTML = '';
+
+  const connected = selectedNode ? connectedNodeIds(selectedNode) : null;
+
+  // Clusters
+  clusters.forEach(c => {
+    const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', c.x); rect.setAttribute('y', c.y);
+    rect.setAttribute('width', c.w); rect.setAttribute('height', c.h);
+    rect.setAttribute('rx', 10);
+    rect.setAttribute('fill', c.color || '#1a1a1a');
+    rect.setAttribute('stroke', '#2a2a2a');
+    rect.setAttribute('stroke-width', '1');
+    svg.appendChild(rect);
+    const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x', c.x + c.w/2); txt.setAttribute('y', c.y + 20);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('font-size', '11'); txt.setAttribute('font-weight', '600');
+    txt.setAttribute('fill', '#8a8a8a'); txt.setAttribute('font-family', 'Segoe UI, system-ui, sans-serif');
+    txt.textContent = c.label;
+    svg.appendChild(txt);
+  });
+
+  // Edges
+  edges.forEach(e => {
+    const fromN = nodes.find(n=>n.id===e.from);
+    const toN   = nodes.find(n=>n.id===e.to);
+    if (!fromN || !toN) return;
+    const show = edgeVisible(e) && nodeVisible(fromN) && nodeVisible(toN);
+    if (!show) return;
+
+    const dimmed = connected && (!connected.has(e.from) || !connected.has(e.to));
+    const color = EDGE_COLORS[e.kind] || '#555';
+    const fc = nodeCenter(fromN), tc = nodeCenter(toN);
+    const dx = Math.abs(tc.x - fc.x);
+    const cx1 = fc.x + dx * 0.5, cy1 = fc.y;
+    const cx2 = tc.x - dx * 0.5, cy2 = tc.y;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', `M${fc.x} ${fc.y} C${cx1} ${cy1}, ${cx2} ${cy2}, ${tc.x} ${tc.y}`);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', e.kind==='critical' ? '2' : '1.2');
+    path.setAttribute('stroke-dasharray', e.kind==='mount' ? '4,3' : 'none');
+    path.setAttribute('opacity', dimmed ? '0.08' : (e.kind==='critical' ? '0.9' : '0.45'));
+    path.setAttribute('marker-end', `url(#arr-${e.kind})`);
+    svg.appendChild(path);
+
+    if (e.label && !dimmed) {
+      const mx = (fc.x + tc.x)/2, my = (fc.y + tc.y)/2 - 6;
+      const lt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      lt.setAttribute('x', mx); lt.setAttribute('y', my);
+      lt.setAttribute('text-anchor', 'middle');
+      lt.setAttribute('font-size', '9'); lt.setAttribute('fill', color);
+      lt.setAttribute('font-family', 'monospace');
+      lt.setAttribute('opacity', '0.75');
+      lt.textContent = e.label.length > 28 ? e.label.slice(0,25)+'…' : e.label;
+      svg.appendChild(lt);
+    }
+  });
+
+  // Nodes
+  nodes.forEach(n => {
+    const vis = nodeVisible(n);
+    const dimmed = (!vis) || (connected && !connected.has(n.id));
+    const color = NODE_COLORS[n.color] || '#4ea1ff';
+    const isSelected = selectedNode === n.id;
+    const isCritical = n.critical;
+    const hasBug = KNOWN_BUGS[n.id];
+    const hasFix = FIXES[n.id];
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('cursor', 'pointer');
+    g.setAttribute('opacity', dimmed ? '0.15' : '1');
+    g.setAttribute('data-id', n.id);
+
+    // node rect
+    const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
+    rect.setAttribute('width', n.w); rect.setAttribute('height', n.h);
+    rect.setAttribute('rx', 7);
+    rect.setAttribute('fill', '#1c1c1c');
+    rect.setAttribute('stroke', isSelected ? '#fff' : color);
+    rect.setAttribute('stroke-width', isCritical ? '2.2' : (isSelected ? '2' : '1.2'));
+    g.appendChild(rect);
+
+    // top color bar
+    const bar = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    bar.setAttribute('x', n.x); bar.setAttribute('y', n.y);
+    bar.setAttribute('width', n.w); bar.setAttribute('height', 4);
+    bar.setAttribute('rx', 7);
+    bar.setAttribute('fill', color);
+    bar.setAttribute('opacity', '0.7');
+    g.appendChild(bar);
+
+    // label
+    const lbl = document.createElementNS('http://www.w3.org/2000/svg','text');
+    lbl.setAttribute('x', n.x + 10); lbl.setAttribute('y', n.y + 22);
+    lbl.setAttribute('font-size', '12'); lbl.setAttribute('font-weight', '600');
+    lbl.setAttribute('fill', '#e8e8e8'); lbl.setAttribute('font-family', 'Segoe UI, system-ui, sans-serif');
+    lbl.textContent = n.label.length > 22 ? n.label.slice(0,20)+'…' : n.label;
+    g.appendChild(lbl);
+
+    // sub label
+    const sub = document.createElementNS('http://www.w3.org/2000/svg','text');
+    sub.setAttribute('x', n.x + 10); sub.setAttribute('y', n.y + 36);
+    sub.setAttribute('font-size', '9.5'); sub.setAttribute('fill', '#8a8a8a');
+    sub.setAttribute('font-family', 'Segoe UI, system-ui, sans-serif');
+    sub.textContent = n.sub.length > 28 ? n.sub.slice(0,26)+'…' : n.sub;
+    g.appendChild(sub);
+
+    // critical badge
+    if (isCritical) {
+      const cbg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      cbg.setAttribute('x', n.x+n.w-44); cbg.setAttribute('y', n.y+8);
+      cbg.setAttribute('width', 36); cbg.setAttribute('height', 13);
+      cbg.setAttribute('rx', 6); cbg.setAttribute('fill', '#ff3860');
+      g.appendChild(cbg);
+      const ct = document.createElementNS('http://www.w3.org/2000/svg','text');
+      ct.setAttribute('x', n.x+n.w-26); ct.setAttribute('y', n.y+18);
+      ct.setAttribute('font-size', '8'); ct.setAttribute('fill', '#fff');
+      ct.setAttribute('text-anchor', 'middle'); ct.setAttribute('font-weight', '700');
+      ct.textContent = 'CORE';
+      g.appendChild(ct);
+    }
+
+    // bug badge
+    if (hasBug) {
+      const bugCount = hasBug.length;
+      const bx = n.x + n.w - 10, by = n.y + (isCritical ? 28 : 8);
+      const bc = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      bc.setAttribute('cx', bx); bc.setAttribute('cy', by); bc.setAttribute('r', 8);
+      bc.setAttribute('fill', '#ef4444');
+      g.appendChild(bc);
+      const bt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      bt.setAttribute('x', bx); bt.setAttribute('y', by+3);
+      bt.setAttribute('text-anchor','middle'); bt.setAttribute('font-size','9');
+      bt.setAttribute('font-weight','700'); bt.setAttribute('fill','#fff');
+      bt.textContent = bugCount;
+      g.appendChild(bt);
+    }
+
+    g.addEventListener('click', (ev) => { ev.stopPropagation(); selectNode(n.id); });
+    g.addEventListener('mouseenter', () => { if (!selectedNode) hoverNode(n.id); });
+    g.addEventListener('mouseleave', () => { if (!selectedNode) showDefaultSidebar(); });
+    svg.appendChild(g);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// SIDEBAR
+// ─────────────────────────────────────────────────────────────
+function showDefaultSidebar() {
+  document.getElementById('sb-content').innerHTML = `
+    <div class="sb-section">
+      <div class="sb-label">Notable findings</div>
+      <div class="finding"><strong>DEAD CODE:</strong> app/importer.py was removed (SQLite-only, no callers). app/pages/4_Import.py is display-only — no in-app bulk import UI.</div>
+      <div class="finding"><strong>BUG — accompaniments table:</strong> No UNIQUE constraint. Re-running bulk_import.py without TRUNCATE first will double all family rows (database.py:54).</div>
+      <div class="finding"><strong>ARCHITECTURE — critical import order:</strong> auth.py MUST be imported before database.py on every page. auth.py injects DATABASE_URL at module load time; database.py reads it once and never again (auth.py:19, database.py:22).</div>
+      <div class="finding"><strong>ENRICHMENT WINS:</strong> fetch_full_students_df() uses COALESCE — student_enrichment beats placeholder values in students for every study field. Always use this for analytics (database.py:267).</div>
+      <div class="finding"><strong>remaining_study_months not stored:</strong> Calculated dynamically as (end_date − today)/30.44 at every report/page render — never stale.</div>
+      <div class="finding"><strong>SPECIALIZATION edge case:</strong> "Specialization" only exists in student_enrichment.certificate — NOT in students.study_level CHECK constraint. COALESCE serves it correctly but raw students table cannot hold it.</div>
+      <div class="finding"><strong>? suffix = conflict flag:</strong> Any student_id ending in ? was inserted with a conflict. Sheet 2 of the data quality report catches these for manual review (generate_data_quality_report.py).</div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Legend — edge colours</div>
+      <div class="legend">
+        <div class="leg-row"><div class="leg-swatch" style="background:#ff3860"></div>Critical path</div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#ffb86b"></div>DB read / write</div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#ff6b9d"></div>External API / file</div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#4ea1ff"></div>Mount / secret injection</div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#555"></div>Internal function call</div>
+      </div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Legend — node border colours</div>
+      <div class="legend">
+        <div class="leg-row"><div class="leg-swatch" style="background:#4ea1ff"></div>Entry / Auth</div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#7bd389"></div>Page (UI route)</div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#c792ea"></div>Core service</div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#ffb86b"></div>Data / DB table</div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#ff6b9d"></div>CLI script / External</div>
+      </div>
+    </div>`;
+}
+
+function hoverNode(id) {
+  const n = nodes.find(x=>x.id===id);
+  if (!n) return;
+  const inEdges  = edges.filter(e=>e.to===id);
+  const outEdges = edges.filter(e=>e.from===id);
+  const bugs = KNOWN_BUGS[id] || [];
+  const fixes = FIXES[id] || [];
+  document.getElementById('sb-content').innerHTML = `
+    <div class="sb-section">
+      <div class="sb-label">File / node</div>
+      <div class="sb-value">${n.label}</div>
+      <div class="sb-path">${n.path || ''}</div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Role</div>
+      <div class="sb-value">${n.role || ''}</div>
+      <div class="sb-plain">${n.plain || ''}</div>
+    </div>
+    ${(n.notes||[]).length ? `<div class="sb-section"><div class="sb-label">Notes</div>${n.notes.map(nt=>`<div class="sb-note">${nt}</div>`).join('')}</div>` : ''}
+    ${inEdges.length ? `<div class="sb-section"><div class="sb-label">Incoming</div>${inEdges.map(e=>`<div class="edge-item">← <span>${e.from}</span>: ${e.label||''}</div>`).join('')}</div>` : ''}
+    ${outEdges.length ? `<div class="sb-section"><div class="sb-label">Outgoing</div>${outEdges.map(e=>`<div class="edge-item">→ <span>${e.to}</span>: ${e.label||''}</div>`).join('')}</div>` : ''}
+    ${bugs.length ? `<div class="sb-section"><div class="sb-label">Known issues</div>${bugs.map(b=>`<div class="finding" style="color:#ef9999"><strong>[${b.sev.toUpperCase()}]</strong> ${b.t}<br><span style="color:#555;font-size:10px">${b.ref}</span></div>`).join('')}</div>` : ''}
+    ${fixes.length ? `<div class="sb-section"><div class="sb-label">Fixes</div>${fixes.map(f=>`<div class="finding" style="color:#86efac">${f.t}</div>`).join('')}</div>` : ''}`;
+}
+
+function selectNode(id) {
+  selectedNode = selectedNode === id ? null : id;
+  if (selectedNode) hoverNode(selectedNode);
+  else showDefaultSidebar();
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────
+// CHIPS
+// ─────────────────────────────────────────────────────────────
+function buildChips() {
+  const wrap = document.getElementById('chips');
+  wrap.innerHTML = '';
+  CHIPS.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (activeFilter===c.id ? ' active' : '');
+    btn.textContent = c.label;
+    btn.onclick = () => { activeFilter = c.id; selectedNode = null; buildChips(); showDefaultSidebar(); render(); };
+    wrap.appendChild(btn);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// PAN + ZOOM
+// ─────────────────────────────────────────────────────────────
+function applyTransform() {
+  document.getElementById('scene').setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
+}
+
+function zoom(factor, cx, cy) {
+  const wrap = document.getElementById('canvas-wrap');
+  const rect = wrap.getBoundingClientRect();
+  const px = cx !== undefined ? cx - rect.left : rect.width/2;
+  const py = cy !== undefined ? cy - rect.top  : rect.height/2;
+  const wx = (px - tx)/scale, wy = (py - ty)/scale;
+  scale = Math.max(0.2, Math.min(3, scale * factor));
+  tx = px - wx * scale;
+  ty = py - wy * scale;
+  applyTransform();
+}
+
+function fitView() {
+  const wrap = document.getElementById('canvas-wrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  const xs = nodes.map(n=>n.x), ys = nodes.map(n=>n.y);
+  const xe = nodes.map(n=>n.x+n.w), ye = nodes.map(n=>n.y+n.h);
+  const minX = Math.min(...xs)-20, minY = Math.min(...ys)-20;
+  const maxX = Math.max(...xe)+20, maxY = Math.max(...ye)+20;
+  const sw = maxX-minX, sh = maxY-minY;
+  scale = Math.min(W/sw, H/sh, 1);
+  tx = (W - sw*scale)/2 - minX*scale;
+  ty = (H - sh*scale)/2 - minY*scale;
+  applyTransform();
+}
+
+const canvasWrap = document.getElementById('canvas-wrap');
+canvasWrap.addEventListener('mousedown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  canvasWrap.classList.add('panning');
+});
+window.addEventListener('mouseup', () => { dragging = false; canvasWrap.classList.remove('panning'); });
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  tx += e.clientX - lastX; ty += e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  applyTransform();
+});
+canvasWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom(e.deltaY < 0 ? 1.1 : 0.9, e.clientX, e.clientY);
+}, { passive: false });
+document.getElementById('svg-root').addEventListener('click', () => {
+  selectedNode = null; showDefaultSidebar(); render();
+});
+
+// ─────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────
+buildChips();
+render();
+showDefaultSidebar();
+setTimeout(fitView, 50);
+</script>
+</body>
+</html>

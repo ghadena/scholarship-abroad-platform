@@ -1,7 +1,8 @@
 # Codebase Analysis — Latest Summary
 
+**File:** `codebase-analysis-2026-05-25.html`  
 **Generated:** 2026-05-25  
-**Git commit:** `d4ea9ab` — bulk_import: append ? to conflicting student_id and flag; update data quality report  
+**Git commit:** `e1a9485` — docs: handover, README, DEPLOYMENT, skills, codebase analysis  
 **Branch:** main
 
 ---
