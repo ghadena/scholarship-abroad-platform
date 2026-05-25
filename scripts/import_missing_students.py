@@ -62,21 +62,35 @@ def import_missing_students(conn, df):
 
         bday_str = birthday.isoformat()
 
-        # Insert student row (placeholder study_level — enrichment holds the real value)
+        # If student_id is already taken by another student, fall back to NID
+        # and flag the record so it can be reviewed
         cur = conn.cursor()
+        cur.execute("SELECT id FROM students WHERE student_id = %s AND national_id != %s", (sid, nid))
+        sid_taken = cur.fetchone()
+        if sid_taken:
+            sid = nid  # use NID as student_id — it's guaranteed unique
+            duplicate_flag = 1
+            duplicate_reason = f"student_id {row.get('student_id')} already assigned to another student"
+        else:
+            duplicate_flag = 0
+            duplicate_reason = None
+
+        # Insert student row (placeholder study_level — enrichment holds the real value)
         cur.execute("SAVEPOINT sp_stu")
         try:
             cur.execute(
                 """INSERT INTO students
                    (national_id, student_id, full_name, birthday, gender, birthday_flag,
-                    country_abroad, study_level, study_field, start_date, end_date, decision_no)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    country_abroad, study_level, study_field, start_date, end_date, decision_no,
+                    duplicate_flag, duplicate_reason)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (national_id) DO NOTHING""",
                 (nid, sid, full_name, bday_str, gender, birthday_flag,
                  country, "Bachelors", "N/A",
                  row.get("start_date") or "2020-01-01",
                  row.get("end_date")   or "2026-01-01",
-                 str(row.get("decision_no") or "N/A").strip()),
+                 str(row.get("decision_no") or "N/A").strip(),
+                 duplicate_flag, duplicate_reason),
             )
             cur.execute("RELEASE SAVEPOINT sp_stu")
             if cur.rowcount == 1:
@@ -84,6 +98,8 @@ def import_missing_students(conn, df):
                 r = cur.fetchone()
                 if r:
                     nid_to_id[nid] = r[0]
+                flag_note = " [flagged: student_id conflict]" if duplicate_flag else ""
+                print(f"  OK: {nid} {full_name}{flag_note}")
                 inserted += 1
             else:
                 print(f"  DUPLICATE (already in DB): {nid} {full_name}")
