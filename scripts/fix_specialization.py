@@ -54,15 +54,28 @@ df["_nid"] = df["National_ID"].apply(clean_nid)
 df["_cert"] = df["Certificate"].apply(map_certificate)
 
 specialization_rows = df[df["_cert"] == "Specialization"]
-print(f"Found {len(specialization_rows)} rows with Certificate = Specialization in Excel")
+print(f"Found {len(specialization_rows)} Specialization rows in Excel")
 
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
 
+# Show what's currently in the DB for these NIDs
+nid_list = specialization_rows["_nid"].tolist()
+cur.execute(
+    "SELECT national_id, certificate FROM student_enrichment WHERE national_id = ANY(%s)",
+    (nid_list,)
+)
+db_rows = {r[0]: r[1] for r in cur.fetchall()}
+print(f"\nFound {len(db_rows)} of the {len(nid_list)} NIDs in student_enrichment:")
+for nid in nid_list:
+    status = db_rows.get(nid, "NOT IN DB")
+    print(f"  {nid}  current certificate = {status}")
+
+print(f"\nProceeding to update {len(db_rows)} rows...")
+
 updated = 0
 not_found = []
-for _, row in specialization_rows.iterrows():
-    nid = row["_nid"]
+for nid in nid_list:
     cur.execute(
         "UPDATE student_enrichment SET certificate = 'Specialization' WHERE national_id = %s",
         (nid,),
@@ -76,9 +89,9 @@ conn.commit()
 cur.close()
 conn.close()
 
-print(f"Updated {updated} rows to 'Specialization'.")
+print(f"\nUpdated {updated} rows to 'Specialization'.")
 if not_found:
-    print(f"Not found in DB ({len(not_found)} NIDs — may not have enrichment records):")
+    print(f"{len(not_found)} NIDs had no enrichment row (they may be in Sheet 6 — missing student profile):")
     for nid in not_found:
         print(f"  {nid}")
 print("Done.")
