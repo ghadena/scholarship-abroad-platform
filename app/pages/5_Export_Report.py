@@ -23,9 +23,9 @@ require_role("admin", "entry")
 
 st.title("Export & Report")
 
-df      = db.fetch_full_students_df()
-acc_df  = db.fetch_accompaniments_df()
-enr_df  = db.fetch_enrichment_df()
+df     = db.fetch_full_students_df()
+acc_df = db.fetch_accompaniments_df()
+enr_df = db.fetch_enrichment_df()
 
 if df.empty:
     st.info("Nothing to export yet.")
@@ -33,18 +33,25 @@ if df.empty:
 
 # ── Filters ───────────────────────────────────────────────────────────────────
 st.subheader("Filters")
-fc1, fc2 = st.columns(2)
+fc1, fc2, fc3 = st.columns(3)
 
 with fc1:
-    countries = sorted(df["country_abroad"].dropna().unique().tolist())
     selected_countries = st.multiselect(
-        "Country", options=countries, default=[], placeholder="All countries"
+        "Country",
+        options=sorted(df["country_abroad"].dropna().unique().tolist()),
+        placeholder="All countries",
     )
-
 with fc2:
-    genders = sorted(df["gender"].dropna().unique().tolist())
     selected_genders = st.multiselect(
-        "Gender", options=genders, default=[], placeholder="All genders"
+        "Gender",
+        options=sorted(df["gender"].dropna().unique().tolist()),
+        placeholder="All genders",
+    )
+with fc3:
+    selected_levels = st.multiselect(
+        "Study Level",
+        options=["Bachelors", "Masters", "Doctorate", "Certificate"],
+        placeholder="All levels",
     )
 
 # Apply filters
@@ -53,16 +60,23 @@ if selected_countries:
     filtered_df = filtered_df[filtered_df["country_abroad"].isin(selected_countries)]
 if selected_genders:
     filtered_df = filtered_df[filtered_df["gender"].isin(selected_genders)]
+if selected_levels:
+    filtered_df = filtered_df[filtered_df["study_level"].isin(selected_levels)]
 
 st.caption(f"Showing **{len(filtered_df):,}** of **{len(df):,}** students")
 
-# Filter acc_df to match filtered students
+# Derive matching acc / enr subsets
 filtered_student_ids = set(filtered_df["id"].tolist())
-filtered_acc_df = acc_df[acc_df["student_id_fk"].isin(filtered_student_ids)] if "student_id_fk" in acc_df.columns else acc_df
+filtered_nids        = set(filtered_df["national_id"].tolist())
 
-# Filter enr_df to match filtered students
-filtered_nids = set(filtered_df["national_id"].tolist())
-filtered_enr_df = enr_df[enr_df["national_id"].isin(filtered_nids)] if "national_id" in enr_df.columns else enr_df
+filtered_acc_df = (
+    acc_df[acc_df["student_id_fk"].isin(filtered_student_ids)]
+    if "student_id_fk" in acc_df.columns else acc_df
+)
+filtered_enr_df = (
+    enr_df[enr_df["national_id"].isin(filtered_nids)]
+    if "national_id" in enr_df.columns else enr_df
+)
 
 st.markdown("---")
 
@@ -85,9 +99,9 @@ with c1:
 with c2:
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        filtered_df.to_excel(writer, sheet_name="Students", index=False)
+        filtered_df.to_excel(writer,     sheet_name="Students",       index=False)
         filtered_acc_df.to_excel(writer, sheet_name="Accompaniments", index=False)
-        filtered_enr_df.to_excel(writer, sheet_name="Enrichment", index=False)
+        filtered_enr_df.to_excel(writer, sheet_name="Enrichment",     index=False)
     st.download_button(
         "Download Combined Excel",
         buf.getvalue(),
@@ -99,20 +113,59 @@ st.markdown("---")
 
 # ── Executive Report (PDF) ────────────────────────────────────────────────────
 st.subheader("Executive Report (PDF)")
-st.caption("Report is generated from the filtered data above.")
+st.caption(
+    "Reports are generated from the filtered data above. "
+    "Ended students (past end date) are automatically excluded from both versions."
+)
 
-if st.button("Generate Executive Report", type="primary"):
-    with st.spinner("Building report…"):
-        pdf_bytes = build_executive_report(filtered_df, filtered_acc_df, filtered_enr_df)
-    st.success("Report generated.")
-    label = "scholarship_report"
+def _filter_label():
+    parts = []
     if selected_countries:
-        label += "_" + "_".join(c.replace(" ", "-") for c in selected_countries[:2])
+        parts.append("_".join(c.replace(" ", "-") for c in selected_countries[:2]))
     if selected_genders:
-        label += "_" + "_".join(g.lower() for g in selected_genders)
-    st.download_button(
-        "Download PDF Report",
-        pdf_bytes,
-        file_name=f"{label}_{date.today()}.pdf",
-        mime="application/pdf",
-    )
+        parts.append("_".join(g.lower() for g in selected_genders))
+    if selected_levels:
+        parts.append("_".join(l.lower() for l in selected_levels))
+    return ("_" + "_".join(parts)) if parts else ""
+
+rep1, rep2 = st.columns(2)
+
+with rep1:
+    st.markdown("**English report**")
+    if st.button("Generate English Report", type="primary", key="gen_en"):
+        with st.spinner("Building English report…"):
+            pdf_en = build_executive_report(
+                filtered_df.copy(), filtered_acc_df.copy(), filtered_enr_df.copy(),
+                arabic=False,
+            )
+        st.session_state["pdf_en"] = pdf_en
+        st.success("English report ready.")
+
+    if "pdf_en" in st.session_state:
+        st.download_button(
+            "Download English PDF",
+            st.session_state["pdf_en"],
+            file_name=f"scholarship_report_EN{_filter_label()}_{date.today()}.pdf",
+            mime="application/pdf",
+            key="dl_en",
+        )
+
+with rep2:
+    st.markdown("**التقرير العربي**")
+    if st.button("إنشاء التقرير العربي", type="primary", key="gen_ar"):
+        with st.spinner("جارٍ إنشاء التقرير العربي…"):
+            pdf_ar = build_executive_report(
+                filtered_df.copy(), filtered_acc_df.copy(), filtered_enr_df.copy(),
+                arabic=True,
+            )
+        st.session_state["pdf_ar"] = pdf_ar
+        st.success("التقرير العربي جاهز.")
+
+    if "pdf_ar" in st.session_state:
+        st.download_button(
+            "تحميل التقرير العربي PDF",
+            st.session_state["pdf_ar"],
+            file_name=f"scholarship_report_AR{_filter_label()}_{date.today()}.pdf",
+            mime="application/pdf",
+            key="dl_ar",
+        )

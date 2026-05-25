@@ -1,4 +1,4 @@
-"""Dashboard page — KPI metrics and interactive Plotly charts."""
+"""Dashboard page — KPI metrics and interactive Plotly charts (active students only)."""
 
 import sys
 from pathlib import Path
@@ -19,51 +19,72 @@ logout()
 require_role("admin", "entry")
 
 st.title("Dashboard")
-df = db.fetch_full_students_df()
-acc_df = db.fetch_accompaniments_df()
 
-if df.empty:
+df_all  = db.fetch_full_students_df()
+acc_df  = db.fetch_accompaniments_df()
+
+if df_all.empty:
     st.info("No data yet — add records first.")
+    st.stop()
+
+# ── Exclude ended students ────────────────────────────────────────────────────
+today = pd.Timestamp.today().normalize()
+if "end_date" in df_all.columns:
+    end_dt = pd.to_datetime(df_all["end_date"], errors="coerce")
+    df = df_all[end_dt >= today].copy()
 else:
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Total Students", len(df))
-    k2.metric("Total Accompaniments", len(acc_df))
-    k3.metric("Countries", df["country_abroad"].nunique())
-    k4.metric("Flagged Records", int(df["birthday_flag"].sum()))
+    df = df_all.copy()
 
-    st.markdown("---")
+n_ended = len(df_all) - len(df)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        fig = px.bar(
-            df["country_abroad"].value_counts().reset_index(),
-            x="country_abroad", y="count",
-            labels={"country_abroad": "Country", "count": "Students"},
-            title="Students by Country",
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        fig = px.pie(df, names="study_level", title="Study Level Distribution", hole=0.4)
-        st.plotly_chart(fig, use_container_width=True)
+# Filter accompaniments to active students only
+active_ids = set(df["id"].tolist())
+acc_active = acc_df[acc_df["student_id_fk"].isin(active_ids)] if not acc_df.empty else acc_df
 
-    c3, c4 = st.columns(2)
-    with c3:
-        gender_df = df["gender"].value_counts().reset_index()
-        fig = px.pie(gender_df, names="gender", values="count", title="Gender Split")
-        st.plotly_chart(fig, use_container_width=True)
-    with c4:
-        df["start_date"] = pd.to_datetime(df["start_date"])
-        df["quarter"] = df["start_date"].dt.to_period("Q").astype(str)
-        q_df = df["quarter"].value_counts().sort_index().reset_index()
-        fig = px.line(
-            q_df, x="quarter", y="count", markers=True,
-            title="Students Starting per Quarter",
-            labels={"quarter": "Quarter", "count": "Students"},
-        )
-        st.plotly_chart(fig, use_container_width=True)
+# ── KPI strip ─────────────────────────────────────────────────────────────────
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Active Students",       len(df))
+k2.metric("Total Accompaniments",  len(acc_active))
+k3.metric("Countries",             df["country_abroad"].nunique())
+k4.metric("Flagged Records",       int(df["birthday_flag"].sum()))
 
-    if "duplicate_flag" in df.columns and df["duplicate_flag"].sum() > 0:
-        st.warning(
-            f"{int(df['duplicate_flag'].sum())} record(s) are flagged as potential duplicates. "
-            "Review them on the Admin page."
-        )
+if n_ended:
+    st.caption(f"{n_ended:,} student(s) with a past end date are excluded from all charts below.")
+
+st.markdown("---")
+
+# ── Charts ────────────────────────────────────────────────────────────────────
+c1, c2 = st.columns(2)
+with c1:
+    fig = px.bar(
+        df["country_abroad"].value_counts().reset_index(),
+        x="country_abroad", y="count",
+        labels={"country_abroad": "Country", "count": "Students"},
+        title="Active Students by Country",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+with c2:
+    fig = px.pie(df, names="study_level", title="Study Level Distribution", hole=0.4)
+    st.plotly_chart(fig, use_container_width=True)
+
+c3, c4 = st.columns(2)
+with c3:
+    gender_df = df["gender"].value_counts().reset_index()
+    fig = px.pie(gender_df, names="gender", values="count", title="Gender Split")
+    st.plotly_chart(fig, use_container_width=True)
+with c4:
+    df["start_date"] = pd.to_datetime(df["start_date"])
+    df["quarter"] = df["start_date"].dt.to_period("Q").astype(str)
+    q_df = df["quarter"].value_counts().sort_index().reset_index()
+    fig = px.line(
+        q_df, x="quarter", y="count", markers=True,
+        title="Students Starting per Quarter",
+        labels={"quarter": "Quarter", "count": "Students"},
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+if "duplicate_flag" in df.columns and df["duplicate_flag"].sum() > 0:
+    st.warning(
+        f"{int(df['duplicate_flag'].sum())} record(s) are flagged as potential duplicates. "
+        "Review them on the Admin page."
+    )
