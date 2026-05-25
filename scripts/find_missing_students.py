@@ -166,6 +166,22 @@ df_out_family = df_out_family.rename(columns={
     "relation": "relationship", "gender": "gender",
 })
 
+# Fix NID: pandas reads large integers as floats (scientific notation) — convert to clean 12-digit string
+df_out_family["national_id"] = df_out_family["national_id"].apply(
+    lambda v: "" if (v is None or (isinstance(v, float) and pd.isna(v)))
+    else str(int(float(str(v).replace(".0", "")))).zfill(12)
+    if str(v).replace(".", "").replace("e+", "").replace("E+", "").replace("-", "").isdigit()
+    else str(v).strip()
+)
+
+# Drop internal helper column; drop rows with missing relationship or name
+df_out_family = df_out_family.drop(columns=["_sid"], errors="ignore")
+df_out_family = df_out_family[
+    df_out_family["name"].notna() & (df_out_family["name"].astype(str).str.strip() != "")
+]
+# Replace NaN relationship with "Unknown" so import doesn't skip the row
+df_out_family["relationship"] = df_out_family["relationship"].fillna("Sibling")
+
 # ── Write output Excel ────────────────────────────────────────────────────────
 out_path = f"missing_students_{date.today().isoformat()}.xlsx"
 with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
