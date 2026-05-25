@@ -50,7 +50,7 @@ with fc2:
 with fc3:
     selected_levels = st.multiselect(
         "Study Level",
-        options=["Bachelors", "Masters", "Doctorate", "Certificate"],
+        options=["Bachelors", "Masters", "Doctorate", "Certificate", "Specialization"],
         placeholder="All levels",
     )
 

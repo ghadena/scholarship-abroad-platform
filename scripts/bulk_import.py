@@ -38,6 +38,7 @@ CERT_MAP = {
     "masters": "Masters", "master": "Masters",
     "doctorate": "Doctorate", "phd": "Doctorate",
     "certificate": "Certificate",
+    "specialization": "Specialization", "specialisation": "Specialization",
 }
 
 
