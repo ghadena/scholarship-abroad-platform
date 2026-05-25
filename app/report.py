@@ -277,6 +277,16 @@ def build_executive_report(
 
     # ── Derived stats ─────────────────────────────────────────────────────────
     today = pd.Timestamp.today()
+
+    # Recalculate remaining months dynamically from end_date so the stored
+    # import-time value (which is now stale) is never used.
+    if not enrich_df.empty and "end_date" in enrich_df.columns:
+        end_dates = pd.to_datetime(enrich_df["end_date"], errors="coerce")
+        enrich_df = enrich_df.copy()
+        enrich_df["remaining_study_months"] = (
+            (end_dates - today).dt.days / 30.44
+        ).round().astype("Int64")
+
     n_students = len(students_df)
     n_family   = len(family_df)
     n_total    = n_students + n_family
@@ -572,7 +582,3 @@ def build_executive_report(
     return buf.getvalue()
 
 
-# ── Keep backward-compatible alias for quarterly report ───────────────────────
-def build_quarterly_report(students_df, accomp_df, year, quarter):
-    """Legacy quarterly report — delegates to build_executive_report."""
-    return build_executive_report(students_df, accomp_df, pd.DataFrame())

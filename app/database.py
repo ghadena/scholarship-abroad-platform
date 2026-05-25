@@ -11,6 +11,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+import streamlit as st
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # ── SQLite fallback path (local dev only) ─────────────────────────────────────
@@ -249,9 +251,12 @@ def insert_student(student_data: dict, accompaniments: list[dict] | None = None)
                 _execute(conn, acc_sql, tuple(acc.get(f) for f in acc_fields))
 
         flag_soft_duplicates(conn)
-        return student_pk
+
+    _clear_fetch_cache()
+    return student_pk
 
 
+@st.cache_data(ttl=300)
 def fetch_students_df():
     import pandas as pd
     with get_conn() as conn:
@@ -265,6 +270,7 @@ def fetch_students_df():
             return pd.read_sql_query("SELECT * FROM students ORDER BY created_at DESC", conn)
 
 
+@st.cache_data(ttl=300)
 def fetch_accompaniments_df():
     import pandas as pd
     sql = """
@@ -284,6 +290,7 @@ def fetch_accompaniments_df():
             return pd.read_sql_query(sql, conn)
 
 
+@st.cache_data(ttl=300)
 def fetch_enrichment_df():
     """Return student_enrichment joined with students (name, student_id) as a DataFrame."""
     import pandas as pd
@@ -306,6 +313,7 @@ def fetch_enrichment_df():
             return pd.read_sql_query(sql, conn)
 
 
+@st.cache_data(ttl=300)
 def fetch_full_students_df():
     """Students joined with enrichment — the canonical view for reports and exports."""
     import pandas as pd
@@ -338,9 +346,17 @@ def fetch_full_students_df():
             return pd.read_sql_query(sql, conn)
 
 
+def _clear_fetch_cache():
+    fetch_students_df.clear()
+    fetch_full_students_df.clear()
+    fetch_accompaniments_df.clear()
+    fetch_enrichment_df.clear()
+
+
 def delete_student(student_pk: int):
     with get_conn() as conn:
         _execute(conn, "DELETE FROM students WHERE id = ?", (student_pk,))
+    _clear_fetch_cache()
 
 
 def create_deletion_request(student_pk: int, requested_by: str, reason: str):
@@ -389,6 +405,8 @@ def resolve_deletion_request(request_id: int, action: str, reviewed_by: str):
         )
         if action == "approved":
             _execute(conn, "DELETE FROM students WHERE id = ?", (student_fk,))
+    if action == "approved":
+        _clear_fetch_cache()
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ logout()
 require_role("admin", "entry")
 
 st.title("Dashboard")
-df = db.fetch_students_df()
+df = db.fetch_full_students_df()
 acc_df = db.fetch_accompaniments_df()
 
 if df.empty:
