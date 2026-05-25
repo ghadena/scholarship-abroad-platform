@@ -145,62 +145,46 @@ def import_students(conn, df: pd.DataFrame):
 
         bday_str = birthday.isoformat()
 
+        # Check if student_id is already taken by a DIFFERENT student — append ? to make unique
+        cur = conn.cursor()
+        cur.execute("SELECT national_id FROM students WHERE student_id = %s", (sid,))
+        existing_sid = cur.fetchone()
+        if existing_sid and existing_sid[0] != nid:
+            sid = f"{sid}?"
+            dup_flag = 1
+            conflict_note = f"student_id conflict (original taken by {existing_sid[0]})"
+            dup_reason = f"{dup_reason}; {conflict_note}" if dup_reason else conflict_note
+            print(f"  FLAGGED student_id conflict: {nid} — {full_name} → sid set to {sid!r}")
+
         try:
-            if _USE_POSTGRES:
-                cur = conn.cursor()
-                cur.execute("SAVEPOINT sp")
-                try:
-                    cur.execute(
-                        """INSERT INTO students
-                           (national_id, student_id, full_name, birthday, gender, birthday_flag,
-                            country_abroad, study_level, study_field, start_date, end_date, decision_no,
-                            duplicate_flag, duplicate_reason)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                           ON CONFLICT (national_id) DO UPDATE SET
-                               duplicate_flag    = 1,
-                               duplicate_reason  = EXCLUDED.duplicate_reason""",
-                        (nid, sid, full_name, bday_str, gender, birthday_flag,
-                         country or "Unknown", "Bachelors", "N/A",
-                         "2020-01-01", "2026-01-01", "N/A",
-                         dup_flag, dup_reason),
-                    )
-                    cur.execute("RELEASE SAVEPOINT sp")
-                    if cur.rowcount == 1:
-                        cur.execute("SELECT id FROM students WHERE national_id = %s", (nid,))
-                        r = cur.fetchone()
-                        if r:
-                            nid_to_id[nid] = r[0]
-                        if dup_flag:
-                            flagged += 1
-                        else:
-                            inserted += 1
-                    else:
-                        # ON CONFLICT hit — existing row was flagged, get its id
-                        cur.execute("SELECT id FROM students WHERE national_id = %s", (nid,))
-                        r = cur.fetchone()
-                        if r:
-                            nid_to_id[nid] = r[0]
-                        flagged += 1
-                except Exception as e:
-                    cur.execute("ROLLBACK TO SAVEPOINT sp")
-                    raise e
-            else:
-                cur = conn.execute(
-                    """INSERT OR IGNORE INTO students
+            cur.execute("SAVEPOINT sp")
+            try:
+                cur.execute(
+                    """INSERT INTO students
                        (national_id, student_id, full_name, birthday, gender, birthday_flag,
                         country_abroad, study_level, study_field, start_date, end_date, decision_no,
                         duplicate_flag, duplicate_reason)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (national_id) DO UPDATE SET
+                           duplicate_flag   = 1,
+                           duplicate_reason = EXCLUDED.duplicate_reason""",
                     (nid, sid, full_name, bday_str, gender, birthday_flag,
                      country or "Unknown", "Bachelors", "N/A",
                      "2020-01-01", "2026-01-01", "N/A",
                      dup_flag, dup_reason),
                 )
-                if cur.lastrowid:
-                    nid_to_id[nid] = cur.lastrowid
-                    inserted += 1
+                cur.execute("RELEASE SAVEPOINT sp")
+                cur.execute("SELECT id FROM students WHERE national_id = %s", (nid,))
+                r = cur.fetchone()
+                if r:
+                    nid_to_id[nid] = r[0]
+                if dup_flag:
+                    flagged += 1
                 else:
-                    skipped += 1
+                    inserted += 1
+            except Exception as e:
+                cur.execute("ROLLBACK TO SAVEPOINT sp")
+                raise e
         except Exception as e:
             print(f"  Student error ({nid}): {e}")
             skipped += 1

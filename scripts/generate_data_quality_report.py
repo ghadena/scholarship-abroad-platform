@@ -135,10 +135,12 @@ def sheet1_duplicate_nids(conn, wb):
 
 def sheet2_missing_student_ids(conn, wb):
     # student_id == national_id means it fell back to NID
+    # student_id ending in ? means it had a conflict and was flagged
     df = q(conn, """
         SELECT national_id, full_name, student_id, birthday::text, country_abroad, gender
         FROM students
         WHERE student_id = national_id
+           OR student_id LIKE '%?'
         ORDER BY full_name
     """)
     cols = [
