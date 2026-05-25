@@ -18,10 +18,9 @@
 **Use case:** One-time or periodic bulk loads from three-sheet Excel files.  
 **Validation:** Lighter — format cleaning (`clean_nid`, `clean_date`) but no full `validate_student_form()` check. Invalid rows are skipped with a console print.  
 **Transaction scope:** One open connection for all inserts. Per-row SAVEPOINTs isolate failures.  
-**Why separate:** The web form UI is too slow for 1,800+ records. The CLI script uses `ON CONFLICT DO NOTHING/UPDATE` for idempotency. They serve different operational modes.
+**Why separate:** The web form UI is too slow for 1,800+ records. The CLI script uses `ON CONFLICT` for conflict handling. They serve different operational modes.
 
-### Path C: `app/importer.py` (orphaned — do not use)
-This module was the original bulk import UI for single-sheet student-only imports. The UI was removed. The module uses SQLite-specific `INSERT OR IGNORE` and direct `conn.execute()` — it does NOT use the dual-mode `_execute()` helper and **breaks against Postgres**. It should be deleted.
+> **Note:** `app/importer.py` is dead code — SQLite-only, no callers. It should be deleted.
 
 ---
 
@@ -79,14 +78,14 @@ This pattern appears in `insert_student()` and must be replicated in any new INS
 
 ### The problem it solves
 The historical bulk import had incomplete data for the `students` table. Required fields like `study_level`, `study_field`, `country_abroad`, `start_date`, `end_date`, `decision_no` could not be populated from the "student data" Excel sheet alone. Placeholder values were inserted:
-- `study_level = 'Bachelors'`
+- `study_level = 'Bachelors'` (required by DB CHECK constraint; enrichment overrides this)
 - `study_field = 'N/A'`
-- `country_abroad = 'Unknown'` (or actual country from the student sheet, which was sometimes correct)
+- `country_abroad = 'Unknown'` (or actual country from the student sheet when available)
 - `start_date = '2020-01-01'`
 - `end_date = '2026-01-01'`
 - `decision_no = 'N/A'`
 
-A richer "more student data" sheet contained the authoritative values. Rather than patching the `students` table in place (which would lose the provenance of the original data), a separate `student_enrichment` table was created, and a COALESCE query at read time serves the merged view.
+A richer "more student data" sheet contained the authoritative values. Rather than patching the `students` table in place, a separate `student_enrichment` table was created, and a COALESCE query at read time serves the merged view.
 
 ### The COALESCE logic
 ```sql
@@ -98,17 +97,30 @@ COALESCE(e.end_date,       s.end_date)       AS end_date
 COALESCE(e.decision_no,    s.decision_no)    AS decision_no
 ```
 
-**Semantics:** Enrichment wins when non-NULL. Student fallback activates for the 14 students with no enrichment row (LEFT JOIN produces NULL for all `e.*` columns → COALESCE falls back to `s.*`).
+**Semantics:** Enrichment wins when non-NULL. Student fallback activates for students with no enrichment row (LEFT JOIN produces NULL for all `e.*` columns → COALESCE falls back to `s.*`).
+
+**Important:** `students.study_level` CHECK constraint only allows `('Bachelors', 'Masters', 'Doctorate', 'Certificate')`. "Specialization" lives only in `student_enrichment.certificate` — the COALESCE serves it correctly at read time.
 
 ### When to use which fetch function
 
 | Situation | Function | Why |
 |-----------|----------|-----|
-| Reports, exports, executive PDF | `fetch_full_students_df()` | Need accurate field values |
+| Reports, exports, executive PDF | `fetch_full_students_df()` | Need accurate enriched values |
 | Admin duplicate review | `fetch_students_df()` | Need raw values to see what was actually entered |
-| Records page browsing | `fetch_full_students_df()` ← **not yet done** | Should show enriched data |
-| Dashboard charts | `fetch_full_students_df()` ← **not yet done** | Currently shows placeholder values |
+| Dashboard charts | `fetch_full_students_df()` | Prevents placeholder values in charts |
 | Insert/delete operations | Neither — use `get_conn()` directly | CRUD doesn't need the joined view |
+
+### `remaining_study_months` — NOT stored
+
+`remaining_study_months` is always calculated dynamically at runtime. It is **not** stored in the DB by `bulk_import.py` (the source Excel had a static column that went stale). Calculate wherever needed:
+
+```python
+enrich_df["remaining_study_months"] = (
+    (pd.to_datetime(enrich_df["end_date"]) - pd.Timestamp.today()).dt.days / 30.44
+).clip(lower=0).round(0).astype(int)
+```
+
+The `remaining_study_months` column still exists in the schema as a nullable field for any manually entered values, but bulk import does not write to it.
 
 ### Adding new enrichment fields
 If the source organisation provides additional enrichment data (e.g. GPA, institution name):
@@ -144,27 +156,41 @@ def _pg_insert_safe(conn, sql, params):
 
 **Pattern for any future Postgres bulk operation:** Wrap each row in a savepoint. Never let a single-row failure abort the transaction.
 
-**SQLite equivalent:** `INSERT OR IGNORE` / `INSERT OR REPLACE` achieve the same row-level isolation natively. SQLite does not have savepoints at the per-row level in the same way.
-
 ---
 
 ## 5. Running the Bulk Import Safely
 
 ```bash
-# Step 1: Always verify what the import will do on a test DB first
-# (Use a local SQLite run with the same file to check counts)
-python3 scripts/bulk_import.py /path/to/file.xlsx
-# (Without DATABASE_URL, this hits SQLite — safe for preview)
+# Step 1: Take a Neon backup
+pg_dump "$DATABASE_URL" --format=custom --file="backup_$(date +%Y%m%d).dump"
 
-# Step 2: Run against production with DATABASE_URL
+# Step 2: Test against SQLite first (safe preview — no DATABASE_URL)
+python3 scripts/bulk_import.py /path/to/file.xlsx
+
+# Step 3: Run against production
 DATABASE_URL="postgresql://neondb_owner:<password>@..." \
   python3 scripts/bulk_import.py /path/to/file.xlsx
+
+# Step 4: Verify counts
+DATABASE_URL="..." python3 scripts/check_db_count.py
+
+# Step 5: Generate data quality report
+DATABASE_URL="..." python3 scripts/generate_data_quality_report.py \
+  --out "data_quality_report_$(date +%Y-%m-%d).xlsx"
 ```
 
 **Idempotency:**
-- Students: Safe to re-run. `ON CONFLICT (national_id) DO NOTHING` skips existing records.
-- Enrichment: Safe to re-run. `ON CONFLICT (national_id) DO UPDATE SET ...` updates existing records with new values.
-- Family (accompaniments): **NOT safe to re-run.** No conflict guard exists. Re-running inserts duplicate family rows. If you need to re-run, truncate `accompaniments` first or add a UNIQUE constraint on `(student_id_fk, national_id)`.
+- Students: `ON CONFLICT (national_id) DO UPDATE SET duplicate_flag=1` — re-running flags existing records as duplicates rather than silently skipping. If you need a clean reimport, TRUNCATE first.
+- Enrichment: `ON CONFLICT (national_id) DO UPDATE SET ...` — safe to re-run, updates existing records.
+- Family (accompaniments): **NOT safe to re-run.** No UNIQUE constraint. Re-running inserts duplicate family rows. Always TRUNCATE `accompaniments` before reimport.
+
+**For a full wipe and reimport**, first run in Neon SQL Editor:
+```sql
+ALTER TABLE accompaniments DROP CONSTRAINT IF EXISTS accompaniments_relationship_check;
+ALTER TABLE accompaniments ADD CONSTRAINT accompaniments_relationship_check
+  CHECK (relationship IN ('Spouse', 'Son', 'Daughter', 'Sibling', 'Unknown'));
+TRUNCATE accompaniments, student_enrichment, students RESTART IDENTITY CASCADE;
+```
 
 **Expected column names in the Excel sheets (exact — case-sensitive in `bulk_import.py`):**
 
@@ -175,31 +201,33 @@ DATABASE_URL="postgresql://neondb_owner:<password>@..." \
 `student id`, `national id`, `name`, `birthday`, `relation`, `gender`
 
 *"more student data" sheet:*
-`National_ID`, `Scholarship decision number`, `Certificate`, `Specialization`, `Study_Country_Standardized`, `Start_Date`, `End_Date`, `Duration_Months`, `Months_Already_Spent`, `Remaining_Study_Months`
+`National_ID`, `Scholarship decision number`, `Certificate`, `Specialization`, `Study_Country_Standardized`, `Start_Date`, `End_Date`, `Duration_Months`, `Months_Already_Spent`
 
-If the source organisation renames columns in a new Excel delivery, update the `row.get("column name")` calls in the respective import function.
+Note: `Remaining_Study_Months` column in the source Excel is ignored — it is calculated dynamically at runtime.
 
 ---
 
-## 6. Duplicate Detection Pipeline
+## 6. Duplicate and Conflict Handling
 
-After every student insert, `flag_soft_duplicates(conn)` runs:
+### NID duplicates (same national_id in source Excel)
+Both rows get `duplicate_flag=1` and a `duplicate_reason` string explaining which row was the first occurrence. `ON CONFLICT (national_id) DO UPDATE SET duplicate_flag=1` ensures the original record is also flagged when the second import attempt hits.
 
+### Student_id conflicts (same student_id already taken by a different NID)
+The conflicting record has `?` appended to its `student_id` (e.g. `"12345?"`) and `duplicate_flag=1`. Any `student_id LIKE '%?'` needs manual review. The data quality report Sheet 2 catches these automatically.
+
+### Soft duplicates (after web form entry)
+After every web form insert, `flag_soft_duplicates(conn)` runs:
 ```
 1. UPDATE students SET duplicate_flag=0, duplicate_reason=NULL  ← reset all
-2. Self-join query to find all soft-duplicate pairs
+2. Self-join query to find all soft-duplicate pairs (name/NID/student_id)
 3. For each pair: UPDATE both rows SET duplicate_flag=1, duplicate_reason=<field>
 ```
 
-**Performance profile:**
-- At 1,822 students: ~0.05s (negligible)
-- At 10,000 students: ~0.5s (acceptable)
-- At 100,000 students: ~50s (unacceptable — would time out on Streamlit)
-
-**Future optimisation if needed:**
-- Add `CREATE INDEX idx_students_name_lower ON students (lower(full_name))` — speeds up name match
-- Only rescan newly inserted records against existing ones, not all pairs
-- Run as a background job rather than synchronously in the insert path
+### Relationship strings in family import
+- Recognised strings → mapped to canonical value (Spouse / Son / Daughter / Sibling)
+- `"student"` / `"موفد"` (the student themselves) → row skipped entirely
+- Any unrecognised string → `"Unknown"` (inserted with Unknown relationship)
+- The `accompaniments.relationship` CHECK constraint includes `'Unknown'`
 
 ---
 
@@ -211,7 +239,6 @@ The project uses a manual migration approach (no Alembic, no Flyway). Migrations
 def init_db():
     schema = _SCHEMA_PG if _USE_POSTGRES else _SCHEMA_SQLITE
     with get_conn() as conn:
-        # Run each CREATE TABLE IF NOT EXISTS statement
         for stmt in schema.split(";"):
             if stmt.strip():
                 cur.execute(stmt)
@@ -219,15 +246,13 @@ def init_db():
 
 def _ensure_columns(conn):
     # Check if column exists; ALTER TABLE ADD COLUMN if not
-    # Pattern: check information_schema (Postgres) or PRAGMA table_info (SQLite)
 ```
 
 **How to add a new column to an existing table:**
-1. Add it to the CREATE TABLE statement in `_SCHEMA_PG` (and `_SCHEMA_SQLITE` via the `.replace()`)
+1. Add it to the CREATE TABLE statement in `_SCHEMA_PG`
 2. Add a migration block in `_ensure_columns()`:
 
 ```python
-# In _ensure_columns(), Postgres section:
 for col, coltype in [("new_column", "TEXT")]:
     cur.execute("""
         SELECT column_name FROM information_schema.columns
@@ -248,7 +273,7 @@ Source: new_excel.xlsx (external, from source organisation)
     │
     ├─ "student data" sheet
     │       ↓  scripts/bulk_import.py → import_students()
-    │   students table
+    │   students table (with placeholder study data)
     │       ↓  app/database.fetch_full_students_df() [COALESCE join]
     │       │
     ├─ "more student data" sheet
@@ -265,7 +290,7 @@ Source: new_excel.xlsx (external, from source organisation)
     │   accompaniments table
     │       ↓  app/database.fetch_accompaniments_df()
     │               ↓
-    │       app/report.py (population composition section)
+    │       app/report.py (population composition, outlier sections)
     │       app/pages/5_Export_Report.py (filtered export)
     │
 Ongoing:
@@ -289,17 +314,18 @@ Ongoing:
 
 ### At bulk import
 - Rows with missing NID, name, or birthday are skipped (logged to console)
-- NIDs are cleaned (`clean_nid`) but not format-validated
+- NIDs are cleaned (`clean_nid`) but not format-validated at input — DB CHECK enforces 12-char length
 - Dates are parsed with multiple format attempts (`clean_date`)
-- Relationships are mapped; unrecognised values default to "Sibling"
+- NID duplicates flagged with `duplicate_flag=1`; student_id conflicts get `?` suffix + flag
+- Relationship strings: unrecognised → `'Unknown'`; `"student"`/`"موفد"` → skip row
 
 ### At database level
-- `national_id` UNIQUE constraint: prevents true duplicates at storage level
-- `student_id` UNIQUE constraint: same
-- `char_length(national_id) = 12`: enforced by DB CHECK constraint
-- `end_date >= start_date`: enforced by DB CHECK constraint
-- `relationship IN (...)`: enforced by DB CHECK constraint
-- `study_level IN (...)`: enforced by DB CHECK constraint
+- `national_id` UNIQUE + `char_length(national_id) = 12`
+- `student_id` UNIQUE
+- `end_date >= start_date`
+- `relationship IN ('Spouse', 'Son', 'Daughter', 'Sibling', 'Unknown')`
+- `study_level IN ('Bachelors', 'Masters', 'Doctorate', 'Certificate')`
 
-### Post-insert
-- `flag_soft_duplicates()`: scans for name/NID/student_id collisions across records
+### Post-import
+- Run `scripts/generate_data_quality_report.py` to get a 7-sheet Excel covering all known data quality issues
+- Review Sheet 2 for any `student_id LIKE '%?'` records needing manual resolution
