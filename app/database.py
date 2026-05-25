@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS accompaniments (
     national_id     TEXT    NOT NULL CHECK (char_length(national_id) = 12),
     birthday        DATE    NOT NULL,
     relationship    TEXT    NOT NULL CHECK (relationship IN
-                              ('Spouse', 'Son', 'Daughter', 'Sibling')),
+                              ('Spouse', 'Son', 'Daughter', 'Sibling', 'Unknown')),
     gender          TEXT    CHECK (gender IN ('Male', 'Female')),
     birthday_flag   INTEGER NOT NULL DEFAULT 0,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

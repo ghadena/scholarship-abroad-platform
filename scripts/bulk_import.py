@@ -30,7 +30,7 @@ RELATIONSHIP_MAP = {
     "father": "Spouse", "mother": "Spouse",
     "رب العائلة": "Spouse", "زوجة": "Spouse", "زوج": "Spouse",
     "ابن": "Son", "ابنة": "Daughter", "أخ": "Sibling", "أخت": "Sibling",
-    "student": None, "موفد": None,
+    "student": None, "موفد": None,   # the student themselves — skip entirely
 }
 
 CERT_MAP = {
@@ -78,9 +78,11 @@ def clean_date(val):
 
 def map_relationship(raw) -> str | None:
     if not raw:
-        return "Sibling"
+        return "Unknown"
     key = str(raw).strip().lower()
-    return RELATIONSHIP_MAP.get(key, "Sibling")
+    # Returns None for "student"/"موفد" (skip those rows entirely)
+    # Returns "Unknown" for anything not in the map
+    return RELATIONSHIP_MAP.get(key, "Unknown")
 
 
 def map_certificate(raw) -> str:
@@ -108,42 +110,59 @@ def _pg_insert_safe(conn, sql, params):
 # ── import functions ──────────────────────────────────────────────────────────
 
 def import_students(conn, df: pd.DataFrame):
-    inserted = skipped = 0
+    inserted = flagged = skipped = 0
     nid_to_id = {}
+    seen_nids = {}  # nid -> row index of first occurrence, to detect within-file duplicates
 
-    for _, row in df.iterrows():
+    for idx, row in df.iterrows():
         nid = clean_nid(row.get("national id") or row.get("national_id"))
         sid = clean_sid(row.get("student id") or row.get("student_id"))
         full_name = str(row.get("name") or "").strip()
         birthday = clean_date(row.get("birthday"))
-        country = str(row.get("country") or "Unknown").strip()
+        country = str(row.get("country") or "").strip() or None
         gender_raw = str(row.get("gender") or "").strip()
         gender = gender_raw if gender_raw in ("Male", "Female") else derive_gender(nid)
         birthday_flag = 0 if (birthday and verify_birthday(nid, birthday)) else 1
 
         if not nid or not full_name or not birthday:
+            print(f"  SKIP (missing required field): nid={nid!r} name={full_name!r}")
             skipped += 1
             continue
+
         # Use nid as fallback student_id if missing
         if not sid:
             sid = nid
+
+        # Detect within-file duplicate NIDs — flag both
+        dup_flag = 0
+        dup_reason = None
+        if nid in seen_nids:
+            dup_flag = 1
+            dup_reason = f"NID appears more than once in source file (also row {seen_nids[nid]})"
+            print(f"  FLAGGED duplicate NID in file: {nid} — {full_name}")
+        else:
+            seen_nids[nid] = idx
 
         bday_str = birthday.isoformat()
 
         try:
             if _USE_POSTGRES:
-                # Use INSERT ... ON CONFLICT DO NOTHING, then check rowcount
                 cur = conn.cursor()
                 cur.execute("SAVEPOINT sp")
                 try:
                     cur.execute(
                         """INSERT INTO students
                            (national_id, student_id, full_name, birthday, gender, birthday_flag,
-                            country_abroad, study_level, study_field, start_date, end_date, decision_no)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                           ON CONFLICT (national_id) DO NOTHING""",
+                            country_abroad, study_level, study_field, start_date, end_date, decision_no,
+                            duplicate_flag, duplicate_reason)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (national_id) DO UPDATE SET
+                               duplicate_flag    = 1,
+                               duplicate_reason  = EXCLUDED.duplicate_reason""",
                         (nid, sid, full_name, bday_str, gender, birthday_flag,
-                         country, "Bachelors", "N/A", "2020-01-01", "2026-01-01", "N/A"),
+                         country or "Unknown", "Bachelors", "N/A",
+                         "2020-01-01", "2026-01-01", "N/A",
+                         dup_flag, dup_reason),
                     )
                     cur.execute("RELEASE SAVEPOINT sp")
                     if cur.rowcount == 1:
@@ -151,13 +170,17 @@ def import_students(conn, df: pd.DataFrame):
                         r = cur.fetchone()
                         if r:
                             nid_to_id[nid] = r[0]
-                        inserted += 1
+                        if dup_flag:
+                            flagged += 1
+                        else:
+                            inserted += 1
                     else:
+                        # ON CONFLICT hit — existing row was flagged, get its id
                         cur.execute("SELECT id FROM students WHERE national_id = %s", (nid,))
                         r = cur.fetchone()
                         if r:
                             nid_to_id[nid] = r[0]
-                        skipped += 1
+                        flagged += 1
                 except Exception as e:
                     cur.execute("ROLLBACK TO SAVEPOINT sp")
                     raise e
@@ -165,10 +188,13 @@ def import_students(conn, df: pd.DataFrame):
                 cur = conn.execute(
                     """INSERT OR IGNORE INTO students
                        (national_id, student_id, full_name, birthday, gender, birthday_flag,
-                        country_abroad, study_level, study_field, start_date, end_date, decision_no)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        country_abroad, study_level, study_field, start_date, end_date, decision_no,
+                        duplicate_flag, duplicate_reason)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (nid, sid, full_name, bday_str, gender, birthday_flag,
-                     country, "Bachelors", "N/A", "2020-01-01", "2026-01-01", "N/A"),
+                     country or "Unknown", "Bachelors", "N/A",
+                     "2020-01-01", "2026-01-01", "N/A",
+                     dup_flag, dup_reason),
                 )
                 if cur.lastrowid:
                     nid_to_id[nid] = cur.lastrowid
@@ -176,10 +202,10 @@ def import_students(conn, df: pd.DataFrame):
                 else:
                     skipped += 1
         except Exception as e:
-            print(f"  Student skip ({nid}): {e}")
+            print(f"  Student error ({nid}): {e}")
             skipped += 1
 
-    return inserted, skipped, nid_to_id
+    return inserted, flagged, skipped, nid_to_id
 
 
 def build_sid_to_dbid(conn) -> dict:
@@ -250,15 +276,15 @@ def import_enrichment(conn, df: pd.DataFrame):
 
     for _, row in df.iterrows():
         nid = clean_nid(row.get("National_ID"))
-        decision_no = str(row.get("Scholarship decision number") or "").strip()
+        decision_no = str(row.get("Scholarship decision number") or "").strip() or None
         certificate = map_certificate(row.get("Certificate"))
-        specialization = str(row.get("Specialization") or "").strip()
-        country = str(row.get("Study_Country_Standardized") or "").strip()
+        specialization = str(row.get("Specialization") or "").strip() or None
+        country = str(row.get("Study_Country_Standardized") or "").strip() or None
         start_date = clean_date(row.get("Start_Date"))
         end_date = clean_date(row.get("End_Date"))
-        duration = int(row.get("Duration_Months") or 0)
-        spent = int(row.get("Months_Already_Spent") or 0)
-        remaining = int(row.get("Remaining_Study_Months") or 0)
+        duration = int(row.get("Duration_Months") or 0) or None
+        spent = int(row.get("Months_Already_Spent") or 0) or None
+        # remaining_study_months is NOT stored — always recalculated from end_date - today at runtime
 
         if not nid:
             skipped += 1
@@ -272,8 +298,8 @@ def import_enrichment(conn, df: pd.DataFrame):
                 _pg_insert_safe(conn,
                     """INSERT INTO student_enrichment
                        (national_id, decision_no, certificate, specialization, study_country,
-                        start_date, end_date, duration_months, months_already_spent, remaining_study_months)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        start_date, end_date, duration_months, months_already_spent)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                        ON CONFLICT (national_id) DO UPDATE SET
                            decision_no=EXCLUDED.decision_no,
                            certificate=EXCLUDED.certificate,
@@ -282,19 +308,18 @@ def import_enrichment(conn, df: pd.DataFrame):
                            start_date=EXCLUDED.start_date,
                            end_date=EXCLUDED.end_date,
                            duration_months=EXCLUDED.duration_months,
-                           months_already_spent=EXCLUDED.months_already_spent,
-                           remaining_study_months=EXCLUDED.remaining_study_months""",
+                           months_already_spent=EXCLUDED.months_already_spent""",
                     (nid, decision_no, certificate, specialization, country,
-                     sd, ed, duration, spent, remaining),
+                     sd, ed, duration, spent),
                 )
             else:
                 conn.execute(
                     """INSERT OR REPLACE INTO student_enrichment
                        (national_id, decision_no, certificate, specialization, study_country,
-                        start_date, end_date, duration_months, months_already_spent, remaining_study_months)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                        start_date, end_date, duration_months, months_already_spent)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
                     (nid, decision_no, certificate, specialization, country,
-                     sd, ed, duration, spent, remaining),
+                     sd, ed, duration, spent),
                 )
             inserted += 1
         except Exception as e:
@@ -324,9 +349,9 @@ def main():
 
     print("Importing students ...")
     with get_conn() as conn:
-        s_ins, s_skip, _ = import_students(conn, students_df)
+        s_ins, s_flag, s_skip, _ = import_students(conn, students_df)
         sid_to_dbid = build_sid_to_dbid(conn)
-    print(f"  Inserted: {s_ins}  |  Skipped/duplicate: {s_skip}")
+    print(f"  Inserted: {s_ins}  |  Flagged (dup NID): {s_flag}  |  Skipped: {s_skip}")
 
     print("Importing family members ...")
     with get_conn() as conn:
