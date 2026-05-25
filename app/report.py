@@ -584,15 +584,23 @@ def build_executive_report(
     enrich_df: pd.DataFrame,
     arabic: bool = False,
     exclude_overdue: bool = True,
+    include_ending_soon_table: bool = True,
+    include_study_level_section: bool = True,
+    include_long_study_section: bool = True,
+    include_large_family_section: bool = True,
 ) -> bytes:
     """
     Build the full executive PDF and return bytes.
 
-    students_df     — from fetch_full_students_df() filtered by caller
-    family_df       — from fetch_accompaniments_df() filtered to match
-    enrich_df       — from fetch_enrichment_df() filtered to match
-    arabic          — if True, produce the Arabic RTL version
-    exclude_overdue — if True (default), strip students with end_date < today
+    students_df                 — from fetch_full_students_df() filtered by caller
+    family_df                   — from fetch_accompaniments_df() filtered to match
+    enrich_df                   — from fetch_enrichment_df() filtered to match
+    arabic                      — if True, produce the Arabic RTL version
+    exclude_overdue             — strip students with end_date < today
+    include_ending_soon_table   — show "Students Ending Within 6 Months" table
+    include_study_level_section — show Study Level & Field Analysis section
+    include_long_study_section  — show Long-Study Outliers (5+ years) section
+    include_large_family_section— show Large Families (8+ members) section
     """
     if arabic:
         _ensure_arabic_font()
@@ -874,7 +882,7 @@ def build_executive_report(
     if rem_img:
         story.append(rem_img)
 
-    if not enrich_df.empty and "remaining_study_months" in enrich_df.columns:
+    if include_ending_soon_table and not enrich_df.empty and "remaining_study_months" in enrich_df.columns:
         story.append(para(T["dur_soon"], h3_s))
         soon = enrich_df.copy()
         soon["remaining_study_months"] = pd.to_numeric(soon["remaining_study_months"], errors="coerce")
@@ -906,53 +914,54 @@ def build_executive_report(
     story += [HR(), PageBreak()]
 
     # ── STUDY LEVEL & FIELD ───────────────────────────────────────────────────
-    story.append(para(T["level_title"], h2_s))
+    if include_study_level_section:
+        story.append(para(T["level_title"], h2_s))
 
-    level_img = _chart_study_level(enrich_df, T, arabic)
-    if level_img:
-        story.append(level_img)
+        level_img = _chart_study_level(enrich_df, T, arabic)
+        if level_img:
+            story.append(level_img)
 
-    if not enrich_df.empty and "certificate" in enrich_df.columns:
-        level_counts = enrich_df["certificate"].value_counts()
-        lev_hdr = [T["level_col"], T["level_students"], T["level_pct"]]
-        if arabic:
-            lev_hdr = [_ar(h) for h in lev_hdr]
-        lev_rows = [lev_hdr]
-        for lvl, cnt in level_counts.items():
-            lbl = _ar(str(lvl)) if arabic else str(lvl)
-            lev_rows.append([lbl,
-                              _ar(f"{int(cnt):,}") if arabic else f"{int(cnt):,}",
-                              _ar(f"{round(100*cnt/len(enrich_df),1)}%") if arabic else f"{round(100*cnt/len(enrich_df),1)}%"])
-        lev_t = Table(lev_rows, colWidths=[6*cm,4*cm,4*cm])
-        lev_t.setStyle(HDR)
-        story.append(lev_t)
+        if not enrich_df.empty and "certificate" in enrich_df.columns:
+            level_counts = enrich_df["certificate"].value_counts()
+            lev_hdr = [T["level_col"], T["level_students"], T["level_pct"]]
+            if arabic:
+                lev_hdr = [_ar(h) for h in lev_hdr]
+            lev_rows = [lev_hdr]
+            for lvl, cnt in level_counts.items():
+                lbl = _ar(str(lvl)) if arabic else str(lvl)
+                lev_rows.append([lbl,
+                                  _ar(f"{int(cnt):,}") if arabic else f"{int(cnt):,}",
+                                  _ar(f"{round(100*cnt/len(enrich_df),1)}%") if arabic else f"{round(100*cnt/len(enrich_df),1)}%"])
+            lev_t = Table(lev_rows, colWidths=[6*cm,4*cm,4*cm])
+            lev_t.setStyle(HDR)
+            story.append(lev_t)
 
-    story.append(para(T["fields_title"], h3_s))
-    field_img = _chart_top_fields(enrich_df, T, arabic)
-    if field_img:
-        story.append(field_img)
+        story.append(para(T["fields_title"], h3_s))
+        field_img = _chart_top_fields(enrich_df, T, arabic)
+        if field_img:
+            story.append(field_img)
 
-    if not enrich_df.empty and "specialization" in enrich_df.columns and "certificate" in enrich_df.columns:
-        story.append(para(T["cross_title"], h3_s))
-        top_fields = enrich_df["specialization"].value_counts().head(10).index
-        cross = enrich_df[enrich_df["specialization"].isin(top_fields)]
-        pivot = cross.groupby(["specialization","certificate"]).size().unstack(fill_value=0)
-        pivot["Total"] = pivot.sum(axis=1)
-        pivot = pivot.sort_values("Total", ascending=False)
-        levels = [c for c in pivot.columns if c != "Total"]
-        cross_hdr = ([T["cross_field"]] + list(levels) + ["Total"])
-        if arabic:
-            cross_hdr = [_ar(h) for h in cross_hdr]
-        cross_rows = [cross_hdr]
-        for field, row in pivot.iterrows():
-            fld_lbl = _ar(str(field)[:28]) if arabic else str(field)[:28]
-            cross_rows.append([fld_lbl] + [int(row.get(l,0)) for l in levels] + [int(row["Total"])])
-        col_w = [5*cm] + [2.5*cm]*len(levels) + [2*cm]
-        cross_t = Table(cross_rows, colWidths=col_w)
-        cross_t.setStyle(HDR)
-        story.append(cross_t)
+        if not enrich_df.empty and "specialization" in enrich_df.columns and "certificate" in enrich_df.columns:
+            story.append(para(T["cross_title"], h3_s))
+            top_fields = enrich_df["specialization"].value_counts().head(10).index
+            cross = enrich_df[enrich_df["specialization"].isin(top_fields)]
+            pivot = cross.groupby(["specialization","certificate"]).size().unstack(fill_value=0)
+            pivot["Total"] = pivot.sum(axis=1)
+            pivot = pivot.sort_values("Total", ascending=False)
+            levels = [c for c in pivot.columns if c != "Total"]
+            cross_hdr = ([T["cross_field"]] + list(levels) + ["Total"])
+            if arabic:
+                cross_hdr = [_ar(h) for h in cross_hdr]
+            cross_rows = [cross_hdr]
+            for field, row in pivot.iterrows():
+                fld_lbl = _ar(str(field)[:28]) if arabic else str(field)[:28]
+                cross_rows.append([fld_lbl] + [int(row.get(l,0)) for l in levels] + [int(row["Total"])])
+            col_w = [5*cm] + [2.5*cm]*len(levels) + [2*cm]
+            cross_t = Table(cross_rows, colWidths=col_w)
+            cross_t.setStyle(HDR)
+            story.append(cross_t)
 
-    story += [HR(), PageBreak()]
+        story += [HR(), PageBreak()]
 
     # ── KEY FINDINGS ──────────────────────────────────────────────────────────
     story.append(para(T["findings_title"], h2_s))
@@ -1007,90 +1016,92 @@ def build_executive_report(
         story.append(para(body_txt, body_s))
 
     # ── LONG-STUDY OUTLIERS (5+ years) ───────────────────────────────────────
-    story += [HR(), PageBreak()]
-    story.append(para(T["long_study_title"], h2_s))
+    if include_long_study_section:
+        story += [HR(), PageBreak()]
+        story.append(para(T["long_study_title"], h2_s))
 
-    five_years_ago = today - pd.DateOffset(years=5)
-    if not students_df.empty and "start_date" in students_df.columns:
-        sd = pd.to_datetime(students_df["start_date"], errors="coerce")
-        long_study = students_df[sd <= five_years_ago].copy()
-        long_study["years_abroad"] = ((today - sd[long_study.index]).dt.days / 365.25).round(1)
-        long_study = long_study.sort_values("years_abroad", ascending=False)
+        five_years_ago = today - pd.DateOffset(years=5)
+        if not students_df.empty and "start_date" in students_df.columns:
+            sd = pd.to_datetime(students_df["start_date"], errors="coerce")
+            long_study = students_df[sd <= five_years_ago].copy()
+            long_study["years_abroad"] = ((today - sd[long_study.index]).dt.days / 365.25).round(1)
+            long_study = long_study.sort_values("years_abroad", ascending=False)
 
-        if long_study.empty:
-            story.append(para(T["long_study_none"], body_s))
+            if long_study.empty:
+                story.append(para(T["long_study_none"], body_s))
+            else:
+                n_long = len(long_study)
+                long_intro = T["long_study_body"].format(n_long=n_long)
+                story.append(para(long_intro, body_s))
+
+                ls_cols = ["national_id", "full_name", "country_abroad", "study_level", "start_date", "years_abroad"]
+                ls_cols = [c for c in ls_cols if c in long_study.columns]
+                ls_hdr_map = {
+                    "national_id": T.get("long_study_col_nid", "National ID"),
+                    "full_name": T.get("long_study_col_name", "Name"),
+                    "country_abroad": T.get("long_study_col_country", "Country"),
+                    "study_level": T.get("long_study_col_level", "Level"),
+                    "start_date": T.get("long_study_col_start", "Start Date"),
+                    "years_abroad": T.get("long_study_col_years", "Years Abroad"),
+                }
+                ls_header = [_ar(ls_hdr_map[c]) if arabic else ls_hdr_map[c] for c in ls_cols]
+                ls_rows = [ls_header]
+                for _, row in long_study.head(30).iterrows():
+                    r = []
+                    for c in ls_cols:
+                        val = str(row[c]) if pd.notna(row[c]) else "—"
+                        r.append(_ar(val) if arabic else val)
+                    ls_rows.append(r)
+                col_w = [2.5*cm, 5*cm, 3*cm, 2.5*cm, 2.5*cm, 2*cm][:len(ls_cols)]
+                ls_t = Table(ls_rows, colWidths=col_w)
+                ls_t.setStyle(HDR)
+                story.append(ls_t)
         else:
-            n_long = len(long_study)
-            long_intro = T["long_study_body"].format(n_long=n_long)
-            story.append(para(long_intro, body_s))
-
-            ls_cols = ["national_id", "full_name", "country_abroad", "study_level", "start_date", "years_abroad"]
-            ls_cols = [c for c in ls_cols if c in long_study.columns]
-            ls_hdr_map = {
-                "national_id": T.get("long_study_col_nid", "National ID"),
-                "full_name": T.get("long_study_col_name", "Name"),
-                "country_abroad": T.get("long_study_col_country", "Country"),
-                "study_level": T.get("long_study_col_level", "Level"),
-                "start_date": T.get("long_study_col_start", "Start Date"),
-                "years_abroad": T.get("long_study_col_years", "Years Abroad"),
-            }
-            ls_header = [_ar(ls_hdr_map[c]) if arabic else ls_hdr_map[c] for c in ls_cols]
-            ls_rows = [ls_header]
-            for _, row in long_study.head(30).iterrows():
-                r = []
-                for c in ls_cols:
-                    val = str(row[c]) if pd.notna(row[c]) else "—"
-                    r.append(_ar(val) if arabic else val)
-                ls_rows.append(r)
-            col_w = [2.5*cm, 5*cm, 3*cm, 2.5*cm, 2.5*cm, 2*cm][:len(ls_cols)]
-            ls_t = Table(ls_rows, colWidths=col_w)
-            ls_t.setStyle(HDR)
-            story.append(ls_t)
-    else:
-        story.append(para(T["long_study_none"], body_s))
+            story.append(para(T["long_study_none"], body_s))
 
     # ── LARGE FAMILIES (8+ members) ───────────────────────────────────────────
-    story += [HR(), PageBreak()]
-    story.append(para(T["large_family_title"], h2_s))
+    if include_large_family_section:
+        story += [HR(), PageBreak()]
+        story.append(para(T["large_family_title"], h2_s))
 
-    if not family_df.empty and "student_id_fk" in family_df.columns:
-        fam_counts = family_df.groupby("student_id_fk").size().reset_index(name="member_count")
-        large_fam_ids = fam_counts[fam_counts["member_count"] >= 8]["student_id_fk"].tolist()
+        if not family_df.empty and "student_id_fk" in family_df.columns:
+            fam_counts = family_df.groupby("student_id_fk").size().reset_index(name="member_count")
+            large_fam_ids = fam_counts[fam_counts["member_count"] >= 8]["student_id_fk"].tolist()
 
-        if not large_fam_ids or students_df.empty:
-            story.append(para(T["large_family_none"], body_s))
+            if not large_fam_ids or students_df.empty:
+                story.append(para(T["large_family_none"], body_s))
+            else:
+                large_students = students_df[students_df["id"].isin(large_fam_ids)].copy()
+                large_students = large_students.merge(
+                    fam_counts.rename(columns={"student_id_fk": "id"}), on="id", how="left"
+                ).sort_values("member_count", ascending=False)
+
+                n_large = len(large_students)
+                lf_intro = T["large_family_body"].format(n_large=n_large)
+                story.append(para(lf_intro, body_s))
+
+                lf_cols = ["national_id", "full_name", "country_abroad", "member_count"]
+                lf_cols = [c for c in lf_cols if c in large_students.columns]
+                lf_hdr_map = {
+                    "national_id": T.get("large_family_col_nid", "National ID"),
+                    "full_name": T.get("large_family_col_name", "Name"),
+                    "country_abroad": T.get("large_family_col_country", "Country"),
+                    "member_count": T.get("large_family_col_count", "Family Members"),
+                }
+                lf_header = [_ar(lf_hdr_map[c]) if arabic else lf_hdr_map[c] for c in lf_cols]
+                lf_rows = [lf_header]
+                for _, row in large_students.iterrows():
+                    r = []
+                    for c in lf_cols:
+                        val = str(int(row[c])) if c == "member_count" and pd.notna(row[c]) else (str(row[c]) if pd.notna(row[c]) else "—")
+                        r.append(_ar(val) if arabic else val)
+                    lf_rows.append(r)
+                col_w = [3*cm, 6*cm, 4*cm, 3*cm][:len(lf_cols)]
+                lf_t = Table(lf_rows, colWidths=col_w)
+                lf_t.setStyle(HDR)
+                story.append(lf_t)
         else:
-            large_students = students_df[students_df["id"].isin(large_fam_ids)].copy()
-            large_students = large_students.merge(
-                fam_counts.rename(columns={"student_id_fk": "id"}), on="id", how="left"
-            ).sort_values("member_count", ascending=False)
-
-            n_large = len(large_students)
-            lf_intro = T["large_family_body"].format(n_large=n_large)
-            story.append(para(lf_intro, body_s))
-
-            lf_cols = ["national_id", "full_name", "country_abroad", "member_count"]
-            lf_cols = [c for c in lf_cols if c in large_students.columns]
-            lf_hdr_map = {
-                "national_id": T.get("large_family_col_nid", "National ID"),
-                "full_name": T.get("large_family_col_name", "Name"),
-                "country_abroad": T.get("large_family_col_country", "Country"),
-                "member_count": T.get("large_family_col_count", "Family Members"),
-            }
-            lf_header = [_ar(lf_hdr_map[c]) if arabic else lf_hdr_map[c] for c in lf_cols]
-            lf_rows = [lf_header]
-            for _, row in large_students.iterrows():
-                r = []
-                for c in lf_cols:
-                    val = str(int(row[c])) if c == "member_count" and pd.notna(row[c]) else (str(row[c]) if pd.notna(row[c]) else "—")
-                    r.append(_ar(val) if arabic else val)
-                lf_rows.append(r)
-            col_w = [3*cm, 6*cm, 4*cm, 3*cm][:len(lf_cols)]
-            lf_t = Table(lf_rows, colWidths=col_w)
-            lf_t.setStyle(HDR)
-            story.append(lf_t)
-    else:
-        story.append(para(T["large_family_none"], body_s))
+            story.append(para(T["large_family_none"], body_s))
 
     story.append(Spacer(1, 12))
     footer_txt = T["footer"].format(report_date=date.today().isoformat())

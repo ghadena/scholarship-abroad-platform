@@ -124,6 +124,31 @@ exclude_overdue = st.checkbox(
     key="excl_overdue",
 )
 
+st.markdown("**Optional sections**")
+oc1, oc2 = st.columns(2)
+with oc1:
+    include_ending_soon = st.checkbox(
+        "Students Ending Within 6 Months table",
+        value=False,
+        key="incl_ending_soon",
+    )
+    include_study_level = st.checkbox(
+        "Study Level & Field Analysis section",
+        value=False,
+        key="incl_study_level",
+    )
+with oc2:
+    include_long_study = st.checkbox(
+        "Long-Study Outliers section (5+ years abroad)",
+        value=False,
+        key="incl_long_study",
+    )
+    include_large_family = st.checkbox(
+        "Large Families section (8+ members)",
+        value=False,
+        key="incl_large_family",
+    )
+
 def _filter_label():
     parts = []
     if selected_countries:
@@ -144,6 +169,10 @@ with rep1:
                 filtered_df.copy(), filtered_acc_df.copy(), filtered_enr_df.copy(),
                 arabic=False,
                 exclude_overdue=exclude_overdue,
+                include_ending_soon_table=include_ending_soon,
+                include_study_level_section=include_study_level,
+                include_long_study_section=include_long_study,
+                include_large_family_section=include_large_family,
             )
         st.session_state["pdf_en"] = pdf_en
         st.success("English report ready.")
@@ -165,6 +194,10 @@ with rep2:
                 filtered_df.copy(), filtered_acc_df.copy(), filtered_enr_df.copy(),
                 arabic=True,
                 exclude_overdue=exclude_overdue,
+                include_ending_soon_table=include_ending_soon,
+                include_study_level_section=include_study_level,
+                include_long_study_section=include_long_study,
+                include_large_family_section=include_large_family,
             )
         st.session_state["pdf_ar"] = pdf_ar
         st.success("التقرير العربي جاهز.")
